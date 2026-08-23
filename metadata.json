@@ -1,0 +1,6 @@
+{
+  "name": "ÉNós - CPLP Relacionamentos",
+  "description": "Plataforma ultraleve de relacionamento, namoro, amizade e conexão intercultural para a comunidade lusófona.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
