@@ -104,7 +104,7 @@ export const AuditModule: React.FC<ModuleProps> = () => {
                     {log.actorRole}
                   </span>
                 </div>
-                <span className="text-[10px] font-mono text-stone-700">Ctx: {log.ipOrContext}</span>
+                <span className="text-[10px] font-mono text-stone-700">Ctx: {log.authContext?.clientIp || (log as any).ipOrContext || 'Sessão Segura'}</span>
               </div>
             </div>
           ))

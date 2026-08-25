@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with CPLP location, intent, and cultural interests",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "displayName": { "type": "string" },
+        "age": { "type": "number" },
+        "bio": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "cityName": { "type": "string" },
+        "intent": { "type": "string" },
+        "interests": { "type": "array" },
+        "photos": { "type": "array" },
+        "verified": { "type": "boolean" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "displayName", "countryCode", "cityName", "intent"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Direct message conversation between connected users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participantUids": { "type": "array" },
+        "lastMessageText": { "type": "string" },
+        "lastMessageTimestamp": { "type": "number" },
+        "unreadCount": { "type": "number" }
+      },
+      "required": ["id", "participantUids"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message in a conversation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderUid": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "senderUid", "text", "timestamp"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Administrator account and permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string" },
+        "email": { "type": "string" },
+        "active": { "type": "boolean" },
+        "countryCode": { "type": "string" }
+      },
+      "required": ["id", "role"]
+    }
+  },
+  "firestore": {
+    "/profiles/{userId}": {
+      "schema": "UserProfile",
+      "description": "Public and discovered user profile documents"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Direct chat rooms between matched CPLP community members"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages inside a conversation"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminUser",
+      "description": "Administrative access profiles and roles"
+    }
+  }
+}

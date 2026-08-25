@@ -20,7 +20,8 @@ import { Conversations } from './components/Conversations';
 import { Profile } from './components/Profile';
 import { AdminKeypadModal } from './components/AdminKeypadModal';
 import { AdminPanel } from './components/AdminPanel';
-import { Compass, MessageCircle, User as UserIcon, Shield } from 'lucide-react';
+import { GmailModal } from './components/GmailModal';
+import { Compass, MessageCircle, User as UserIcon, Shield, Mail } from 'lucide-react';
 
 // Helper to get or create a stable persistent device UID
 function getOrCreateDeviceId(): string {
@@ -46,6 +47,12 @@ export default function App() {
 
   // Admin & Keypad State
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
+  const [isGmailOpen, setIsGmailOpen] = useState(false);
+  const [gmailComposeProps, setGmailComposeProps] = useState<{
+    recipient?: string;
+    subject?: string;
+    body?: string;
+  }>({});
   const [adminSession, setAdminSession] = useState<AdminUser | null>(null);
   const [dynamicAdmins, setDynamicAdmins] = useState<AdminUser[]>(() => {
     try {
@@ -490,15 +497,16 @@ export default function App() {
     <div className="min-h-screen bg-stone-100 flex flex-col items-center">
       {/* App Outer Frame Container */}
       <div className="w-full max-w-md min-h-screen bg-stone-50 flex flex-col relative shadow-md">
-        {/* Top Minimal Branding Header with Disguised Founder Trigger */}
+        {/* Top Minimal Branding Header with Discreet Admin Trigger inside ÉN Logo */}
         <header className="px-4 py-3 bg-white border-b border-stone-200 flex items-center justify-between sticky top-0 z-20">
           <div className="flex items-center gap-2">
             <button
               type="button"
-              id="btn-disguised-founder-trigger"
+              id="btn-admin-keypad-header"
               onClick={() => setIsKeypadOpen(true)}
-              className="w-7 h-7 rounded-full bg-rose-600 text-white font-bold flex items-center justify-center text-xs shadow-2xs cursor-pointer active:scale-95 transition"
+              className="w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center justify-center text-xs shadow-2xs cursor-pointer active:scale-95 transition select-none"
               title="ÉNós"
+              aria-label="ÉNós"
             >
               ÉN
             </button>
@@ -506,19 +514,22 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-xs text-stone-700 hidden sm:inline">
-              {profile?.countryCode ? `CPLP · ${profile.cityName}` : 'CPLP'}
-            </span>
             <button
               type="button"
-              id="btn-admin-keypad-header"
-              onClick={() => setIsKeypadOpen(true)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 hover:text-stone-900 border border-stone-200/80 transition cursor-pointer active:scale-95"
-              title="Abrir teclado PIN administrativo"
+              id="btn-open-gmail-header"
+              onClick={() => {
+                setGmailComposeProps({});
+                setIsGmailOpen(true);
+              }}
+              className="p-1.5 rounded-full text-stone-600 hover:text-red-600 hover:bg-stone-100 transition cursor-pointer"
+              title="Google Workspace · Gmail"
+              aria-label="Abrir Gmail"
             >
-              <Shield className="w-3.5 h-3.5 text-stone-500" />
-              <span>Admin</span>
+              <Mail className="w-4 h-4" />
             </button>
+            <span className="text-xs font-medium text-stone-600">
+              {profile?.countryCode ? `CPLP · ${profile.cityName}` : 'CPLP'}
+            </span>
           </div>
         </header>
 
@@ -560,6 +571,10 @@ export default function App() {
               onUpdatePrivacy={handleUpdatePrivacy}
               onLinkAccount={handleLinkAccount}
               onOpenKeypad={() => setIsKeypadOpen(true)}
+              onOpenGmail={() => {
+                setGmailComposeProps({});
+                setIsGmailOpen(true);
+              }}
             />
           )}
         </main>
@@ -605,6 +620,15 @@ export default function App() {
             <span className="text-[10px] tracking-wider uppercase">Perfil</span>
           </button>
         </nav>
+
+        {/* Gmail Integration Modal */}
+        <GmailModal
+          isOpen={isGmailOpen}
+          onClose={() => setIsGmailOpen(false)}
+          initialRecipient={gmailComposeProps.recipient}
+          initialSubject={gmailComposeProps.subject}
+          initialBody={gmailComposeProps.body}
+        />
 
         {/* Secret Keypad Modal */}
         <AdminKeypadModal

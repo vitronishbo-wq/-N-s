@@ -2,9 +2,12 @@ import { GoogleGenAI } from '@google/genai';
 
 let aiInstance: GoogleGenAI | null = null;
 
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+
 function getAiClient(): GoogleGenAI | null {
-  if (!aiInstance && process.env.GEMINI_API_KEY) {
-    aiInstance = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_STUDIO_API_KEY;
+  if (!aiInstance && apiKey) {
+    aiInstance = new GoogleGenAI({ apiKey });
   }
   return aiInstance;
 }
@@ -28,7 +31,7 @@ Usuário 1: ${myProfile.displayName}, de ${myProfile.cityName} (${myProfile.coun
 Usuário 2: ${targetProfile.displayName}, de ${targetProfile.cityName} (${targetProfile.countryName}), busca ${targetProfile.intent}, gosta de: ${targetProfile.interests.join(', ')}.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: DEFAULT_MODEL,
       contents: prompt,
     });
 
@@ -60,7 +63,7 @@ Objetivo: ${intent}
 Interesses: ${interests.join(', ')}.`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: DEFAULT_MODEL,
       contents: prompt,
     });
 
@@ -91,7 +94,7 @@ export async function assistConversationIcebreaker(
   try {
     const prompt = `Gere 3 sugestões curtas de quebra-gelo respeitosas e envolventes em português para iniciar conversa entre pessoas de ${userACity} e ${userBCity}, com interesses em comum: ${sharedInterests.join(', ')}. Responda como uma lista de 3 frases curtas separadas por quebra de linha.`;
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: DEFAULT_MODEL,
       contents: prompt,
     });
     const lines = response.text?.split('\n').filter(l => l.trim().length > 0).map(l => l.replace(/^\d+[\.\-\)]\s*/, '').trim()) || [];

@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: enos-cplp-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_NAME
+        value: ÉNós
+      - key: PLATFORM_ID
+        value: cplp-relacionamentos
+      - key: ENVIRONMENT
+        value: production
+      - key: DEFAULT_LOCALE
+        value: pt-AO
+      - key: DEFAULT_TIMEZONE
+        value: Africa/Luanda
+      - key: DEFAULT_CURRENCY
+        value: AOA
+      - key: DEFAULT_COUNTRY_CODE
+        value: AO
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: HEALTHCHECK_PATH
+        value: /api/health
+      - key: CORS_ENABLED
+        value: "true"
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CLIENT_EMAIL
+        sync: false
+      - key: FIREBASE_PRIVATE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false

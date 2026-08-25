@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { UserProfile, UserPreferences, PrivacySettings, CPLPCountryCode, RelationshipIntent } from '../types';
 import { CPLP_COUNTRY_LIST, RELATIONSHIP_INTENTS_CONFIG, NORMALIZED_INTERESTS, CPLP_COUNTRIES } from '../constants';
 import { compressImage } from '../utils/imageCompression';
-import { Camera, Shield, Globe, Heart, Lock, UserCheck, Sparkles, Check, Link } from 'lucide-react';
+import { Camera, Shield, Globe, Heart, Lock, UserCheck, Sparkles, Check, Link, Mail } from 'lucide-react';
+import { isGmailConnected } from '../services/gmail';
 
 interface ProfileProps {
   profile: UserProfile;
@@ -14,6 +15,7 @@ interface ProfileProps {
   onUpdatePrivacy: (updated: Partial<PrivacySettings>) => void;
   onLinkAccount: (email: string) => void;
   onOpenKeypad?: () => void;
+  onOpenGmail?: () => void;
 }
 
 export const Profile: React.FC<ProfileProps> = ({
@@ -25,7 +27,8 @@ export const Profile: React.FC<ProfileProps> = ({
   onUpdatePreferences,
   onUpdatePrivacy,
   onLinkAccount,
-  onOpenKeypad
+  onOpenKeypad,
+  onOpenGmail
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'safety'>('profile');
   const [emailInput, setEmailInput] = useState('');
@@ -349,8 +352,34 @@ export const Profile: React.FC<ProfileProps> = ({
             </p>
           </div>
 
-          {onOpenKeypad && (
+          {onOpenGmail && (
             <div className="pt-2">
+              <button
+                type="button"
+                id="btn-open-gmail-profile"
+                onClick={onOpenGmail}
+                className="w-full py-2.5 px-4 bg-white hover:bg-stone-50 border border-stone-300 text-stone-800 font-medium text-xs rounded-xl flex items-center justify-between transition cursor-pointer active:scale-98 shadow-2xs"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
+                    <Mail className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="text-left">
+                    <span className="font-semibold block">Google Workspace · Gmail</span>
+                    <span className="text-[10px] text-stone-500">
+                      {isGmailConnected() ? 'Conectado à sua conta Google' : 'Conectar para ler e enviar e-mails'}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-rose-600">
+                  {isGmailConnected() ? 'Abrir' : 'Conectar'}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {onOpenKeypad && (
+            <div className="pt-1">
               <button
                 type="button"
                 id="btn-open-admin-keypad-profile"

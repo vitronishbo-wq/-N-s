@@ -53,7 +53,55 @@ O fluxo de descoberta opera em 7 fases explícitas e desacopladas:
 
 ---
 
-## 6. Automação de Qualidade (CI / Testes)
+## 6. Pipeline de Automação CI/CD & Arquitetura de Deploy
+
+A arquitetura adota separação estrita de responsabilidades:
+
+```text
+GOOGLE AI STUDIO (Desenvolvimento)
+        │
+        ▼
+GITHUB (Source of Truth / main branch)
+        │
+        ├─────────────────────────────────────────────────┐
+        ▼                                                 ▼
+GITHUB ACTIONS                                         RENDER (API Backend)
+  ├── npm ci                                             ├── Auto-deploy on push
+  ├── npm run typecheck                                  ├── Express API / Health
+  ├── npm test                                           ├── Gemini AI Backend
+  ├── npm run build (Frontend SPA)                       └── Operações Privilegiadas
+  ├── Sync Firestore Rules (firestore.rules)
+  ├── Sync Firestore Indexes (firestore.indexes.json)
+  └── Deploy Firebase Hosting
+        │                                                 │
+        └────────────────────────┬────────────────────────┘
+                                 ▼
+                       FIRESTORE (Source of Truth)
+```
+
+### Scripts de Deploy Manual / Local:
+- `npm run deploy:firestore`: Sincroniza regras (`firestore.rules`) e índices (`firestore.indexes.json`).
+- `npm run deploy:rules`: Sincroniza apenas as regras de segurança do Firestore.
+- `npm run deploy:indexes`: Sincroniza apenas a configuração de índices.
+
+### Separação de Segredos vs. Variáveis Públicas:
+
+- **GitHub Secrets (Privados)**:
+  - `FIREBASE_PROJECT_ID`
+  - `FIREBASE_SERVICE_ACCOUNT`
+  - `GEMINI_API_KEY`
+- **GitHub Variables / Configurações de Cliente (Não-Secretas)**:
+  - `VITE_FIREBASE_AUTH_DOMAIN`
+  - `VITE_FIREBASE_PROJECT_ID`
+  - `VITE_FIREBASE_STORAGE_BUCKET`
+  - `VITE_FIREBASE_MESSAGING_SENDER_ID`
+  - `VITE_FIREBASE_APP_ID`
+  - `VITE_FIREBASE_API_KEY`
+  - `VITE_FIREBASE_MEASUREMENT_ID`
+
+---
+
+## 7. Automação de Qualidade (CI / Testes)
 
 - `npm run typecheck` (Validação estrita de tipos TypeScript)
 - `npm test` (Suite Vitest cobrindo matching, exclusões, contratos e ciclo de vida)

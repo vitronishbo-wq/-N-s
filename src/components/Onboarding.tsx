@@ -146,10 +146,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
           <div className="flex items-center gap-2">
             <button
               type="button"
-              id="btn-disguised-founder-onboarding"
+              id="btn-admin-keypad-onboarding"
               onClick={onOpenKeypad}
-              className="w-8 h-8 rounded-full bg-rose-600 text-white font-bold flex items-center justify-center text-sm shadow-sm cursor-pointer active:scale-95 transition"
+              className="w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center justify-center text-sm shadow-sm cursor-pointer active:scale-95 transition select-none"
               title="ÉNós"
+              aria-label="ÉNós"
             >
               ÉN
             </button>
@@ -159,18 +160,6 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {onOpenKeypad && (
-              <button
-                type="button"
-                id="btn-admin-keypad-onboarding"
-                onClick={onOpenKeypad}
-                className="flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-medium text-stone-600 bg-stone-100 hover:bg-stone-200 hover:text-stone-900 border border-stone-200 transition cursor-pointer active:scale-95"
-                title="Acesso Admin"
-              >
-                <Shield className="w-3.5 h-3.5 text-stone-500" />
-                <span>Admin</span>
-              </button>
-            )}
             <span className="text-xs font-medium px-2.5 py-1 bg-stone-200 text-stone-700 rounded-full">
               Etapa {step} de 4
             </span>
