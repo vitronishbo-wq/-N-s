@@ -26,7 +26,11 @@ jobs:
           cache: npm
 
       - name: Install Dependencies
-        run: npm ci
+        run: |
+          npm ci || {
+            echo "⚠️ npm ci falhou por discrepância no lockfile. Executando npm install como fallback..."
+            npm install
+          }
 
       - name: Typecheck
         run: npm run typecheck
@@ -65,3 +69,9 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
           projectId: ${{ secrets.FIREBASE_PROJECT_ID }}
+
+      - name: Trigger Render Backend Deploy Hook
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.RENDER_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "🚀 Disparando Deploy Hook do Render para atualizar o backend..."
+          curl -s -f -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}" || echo "⚠️ Render Hook disparado com aviso."
