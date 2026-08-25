@@ -71,11 +71,12 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
-          if [ -n "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "🚀 Disparando Deploy Hook do Render..."
-            curl --fail --silent --show-error \
-              --request POST \
-              "$RENDER_DEPLOY_HOOK_URL"
-          else
-            echo "ℹ️ RENDER_DEPLOY_HOOK_URL não configurado. Deploy do Render ignorado."
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "Render deploy hook is not configured; skipping."
+            exit 0
           fi
+
+          echo "Triggering Render backend deploy hook..."
+          curl --fail --silent --show-error \
+            --request POST \
+            "$RENDER_DEPLOY_HOOK_URL"
