@@ -14,6 +14,7 @@
     ]
   },
   "firestore": {
+    "database": "ai-studio-nscplprelacionam-b5f7f7f0-140f-4758-a58c-ab3ffb057ebc",
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   }
