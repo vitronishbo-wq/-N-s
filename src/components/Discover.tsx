@@ -12,6 +12,7 @@ import {
 import { DiscoveryAppService } from '../services/discoveryService';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { persistCommunityAnswer, persistDiscoveryEvent } from '../services/discoveryPersistence';
+import { connectionGraph } from '../services/connectionGraph';
 import { dataSaver } from '../services/dataSaverService';
 import { CPLP_COUNTRIES } from '../constants';
 import {
@@ -220,6 +221,21 @@ export const Discover: React.FC<DiscoverProps> = ({
         compatibilityReasons: currentCandidate?.compatibilityReasons || [],
         compositeRank: currentCandidate?.prioritizationScore?.finalCompositeRank || 0,
         discoveryMode: currentCandidate?.discoveryMode
+      });
+
+      // PONTO 2 MCR Funnel: Record DISCOVERY stage with discoveryOrigin
+      const origin = currentCandidate?.discoveryMode || 'VALUES_AFFINITY';
+      connectionGraph.recordFunnelEvent({
+        userId: myProfile.uid,
+        targetUid: targetProfile.uid,
+        stage: 'DISCOVERY',
+        countryPair: [myProfile.countryCode, targetProfile.countryCode],
+        discoveryOrigin: origin,
+        metadata: {
+          discoveryOrigin: origin,
+          discoveryMode: currentCandidate?.discoveryMode,
+          isSerendipitous: currentCandidate?.discoveryMode === 'SERENDIPITY'
+        }
       });
     }
   }, [targetProfile?.uid, myProfile?.uid]);

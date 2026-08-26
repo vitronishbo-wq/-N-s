@@ -486,12 +486,21 @@ export interface DiscoveryCandidate {
 // PONTO 1: Meaningful Connection Rate (MCR) & Connection Funnel
 // -------------------------------------------------------------
 export type MCRFunnelStage =
-  | 'DISCOVERY'              // Candidate shown to user
-  | 'MUTUAL_INTEREST'        // Mutual like / approach
-  | 'CONVERSATION_INITIATED' // First message exchanged
-  | 'RECIPROCITY'            // Mutual replies exchanged (>= 3 messages back and forth)
-  | 'CONTINUITY'             // Active dialogue past 24h or > 8 messages
-  | 'MEANINGFUL_CONNECTION'; // High engagement, audio/contact exchange, or positive connection rating
+  | 'DISCOVERY'              // Candidate shown to user (DISCOVERED)
+  | 'MUTUAL_INTEREST'        // Mutual like / approach (MUTUAL_INTEREST)
+  | 'CONVERSATION_INITIATED' // First message exchanged (CONVERSATION_STARTED)
+  | 'RECIPROCITY'            // Mutual replies exchanged (>= 3 messages back and forth) (RECIPROCITY_REACHED)
+  | 'CONTINUITY'             // Active dialogue past 24h or > 8 messages (CONTINUITY_REACHED)
+  | 'MEANINGFUL_CONNECTION'; // High engagement, audio/contact exchange, or confirmed meaningful bond
+
+export type DiscoveryOriginTag =
+  | 'SERENDIPITY'
+  | 'CULTURAL_BRIDGE'
+  | 'COMPLEMENTARITY'
+  | 'DEEP_CONVERSATION'
+  | 'VALUES_AFFINITY'
+  | 'COMMUNITY_QUESTION'
+  | 'DIRECT_SEARCH';
 
 export interface ConnectionFunnelEvent {
   id: string;
@@ -501,14 +510,31 @@ export interface ConnectionFunnelEvent {
   timestamp: number;
   countryPair: [CPLPCountryCode, CPLPCountryCode];
   communityTag?: string;
+  discoveryOrigin?: DiscoveryOriginTag | string;
   metadata?: {
+    discoveryOrigin?: string;
+    discoveryMode?: string;
     messageCount?: number;
     hoursActive?: number;
     icebreakerUsed?: boolean;
     communicationStyleMatch?: boolean;
     serendipityMode?: boolean;
+    userRating?: number;
     rating?: number;
   };
+}
+
+export interface MCROriginBreakdown {
+  origin: string;
+  originLabel: string;
+  totalDiscovered: number;
+  totalMutualInterests: number;
+  totalConversationsStarted: number;
+  totalReciprocal: number;
+  totalContinuous: number;
+  totalMeaningful: number;
+  mcrScorePercent: number;
+  reciprocityRatePercent: number;
 }
 
 export interface MCRMetrics {
@@ -522,8 +548,10 @@ export interface MCRMetrics {
   reciprocityRatePercent: number;
   continuityRatePercent: number;
   calculatedAt: number;
+  timeframe?: '7d' | '30d' | 'all';
   byCountryPair?: Record<string, number>;
   byCommunity?: Record<string, number>;
+  byOrigin?: Record<string, MCROriginBreakdown>;
 }
 
 export interface ConnectionOutcomeLearning {

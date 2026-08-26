@@ -106,6 +106,7 @@ export class HumanConnectionGraph {
           stage: data.stage,
           countryPair: data.countryPair || ['AO', 'PT'],
           communityTag: data.communityTag,
+          discoveryOrigin: data.discoveryOrigin || data.metadata?.discoveryOrigin || data.metadata?.discoveryMode,
           metadata: data.metadata,
           timestamp: data.timestamp || Date.now()
         });
@@ -357,8 +358,10 @@ export class HumanConnectionGraph {
     stage: MCRFunnelStage;
     countryPair: [CPLPCountryCode, CPLPCountryCode];
     communityTag?: string;
+    discoveryOrigin?: string;
     metadata?: Record<string, unknown>;
   }): Promise<ConnectionFunnelEvent> {
+    const origin = eventData.discoveryOrigin || (eventData.metadata?.discoveryOrigin as string) || (eventData.metadata?.discoveryMode as string) || 'VALUES_AFFINITY';
     const event: ConnectionFunnelEvent = {
       id: `mcr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       userId: eventData.userId,
@@ -366,7 +369,11 @@ export class HumanConnectionGraph {
       stage: eventData.stage,
       countryPair: eventData.countryPair,
       communityTag: eventData.communityTag,
-      metadata: eventData.metadata as ConnectionFunnelEvent['metadata'],
+      discoveryOrigin: origin,
+      metadata: {
+        ...eventData.metadata,
+        discoveryOrigin: origin
+      } as ConnectionFunnelEvent['metadata'],
       timestamp: Date.now()
     };
 
@@ -410,9 +417,24 @@ export class HumanConnectionGraph {
 
   /**
    * PONTO 1: Computes the Meaningful Connection Rate (MCR) North Star Metric
+   * Answers: "Qual é a MCR desta semana?", "Qual foi a MCR por origem da descoberta?", etc.
    */
-  public calculateMCRMetrics(filter?: { countryCode?: CPLPCountryCode; community?: string }): MCRMetrics {
-    let events = this.inMemoryEvents;
+  public calculateMCRMetrics(filter?: {
+    timeframe?: '7d' | '30d' | 'all';
+    countryCode?: CPLPCountryCode;
+    community?: string;
+    origin?: string;
+  }): MCRMetrics {
+    let events = [...this.inMemoryEvents];
+
+    const timeframe = filter?.timeframe || 'all';
+    if (timeframe === '7d') {
+      const cutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+      events = events.filter(e => e.timestamp >= cutoff);
+    } else if (timeframe === '30d') {
+      const cutoff = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      events = events.filter(e => e.timestamp >= cutoff);
+    }
 
     if (filter?.countryCode) {
       events = events.filter(e => e.countryPair[0] === filter.countryCode || e.countryPair[1] === filter.countryCode);
@@ -420,6 +442,20 @@ export class HumanConnectionGraph {
     if (filter?.community) {
       events = events.filter(e => e.communityTag === filter.community);
     }
+    if (filter?.origin) {
+      events = events.filter(e => (e.discoveryOrigin || '').toUpperCase() === filter.origin?.toUpperCase());
+    }
+
+    // Default origins list to track breakdown
+    const ORIGIN_LABELS: Record<string, string> = {
+      SERENDIPITY: '✦ Descoberta Inesperada',
+      CULTURAL_BRIDGE: 'Ponte Cultural Lusófona',
+      COMPLEMENTARITY: 'Diferenças Enriquecedoras',
+      DEEP_CONVERSATION: 'Diálogo Profundo',
+      VALUES_AFFINITY: 'Sintonia de Valores & Intenção',
+      COMMUNITY_QUESTION: 'Pergunta da Comunidade',
+      DIRECT_SEARCH: 'Filtro Direto'
+    };
 
     const uniquePairsByStage: Record<MCRFunnelStage, Set<string>> = {
       DISCOVERY: new Set(),
@@ -430,13 +466,37 @@ export class HumanConnectionGraph {
       MEANINGFUL_CONNECTION: new Set()
     };
 
+    // Tracking per origin
+    const pairOrigins: Record<string, string> = {};
+    const originStages: Record<string, Record<MCRFunnelStage, Set<string>>> = {};
+
     const byCountryPair: Record<string, number> = {};
     const byCommunity: Record<string, number> = {};
 
     for (const e of events) {
       const pairKey = [e.userId, e.targetUid].sort().join(':');
+      const originKey = (e.discoveryOrigin || e.metadata?.discoveryOrigin || e.metadata?.discoveryMode || 'VALUES_AFFINITY').toUpperCase();
+
+      if (!pairOrigins[pairKey] || e.stage === 'DISCOVERY') {
+        pairOrigins[pairKey] = originKey;
+      }
+
+      const effectiveOrigin = pairOrigins[pairKey] || originKey;
+
+      if (!originStages[effectiveOrigin]) {
+        originStages[effectiveOrigin] = {
+          DISCOVERY: new Set(),
+          MUTUAL_INTEREST: new Set(),
+          CONVERSATION_INITIATED: new Set(),
+          RECIPROCITY: new Set(),
+          CONTINUITY: new Set(),
+          MEANINGFUL_CONNECTION: new Set()
+        };
+      }
+
       if (uniquePairsByStage[e.stage]) {
         uniquePairsByStage[e.stage].add(pairKey);
+        originStages[effectiveOrigin][e.stage].add(pairKey);
       }
 
       if (e.stage === 'MEANINGFUL_CONNECTION') {
@@ -463,6 +523,46 @@ export class HumanConnectionGraph {
       ? (totalContinuous / totalReciprocal) * 100
       : 0;
 
+    // Calculate byOrigin breakdown
+    const byOrigin: Record<string, import('../types').MCROriginBreakdown> = {};
+
+    // Ensure all standard origins exist in summary for clean UI comparison
+    const allOriginKeys = Array.from(new Set([...Object.keys(ORIGIN_LABELS), ...Object.keys(originStages)]));
+
+    for (const oKey of allOriginKeys) {
+      const stages = originStages[oKey] || {
+        DISCOVERY: new Set(),
+        MUTUAL_INTEREST: new Set(),
+        CONVERSATION_INITIATED: new Set(),
+        RECIPROCITY: new Set(),
+        CONTINUITY: new Set(),
+        MEANINGFUL_CONNECTION: new Set()
+      };
+
+      const disc = stages.DISCOVERY.size;
+      const mut = stages.MUTUAL_INTEREST.size;
+      const conv = stages.CONVERSATION_INITIATED.size;
+      const recip = stages.RECIPROCITY.size;
+      const cont = stages.CONTINUITY.size;
+      const mean = stages.MEANINGFUL_CONNECTION.size;
+
+      const originMCR = disc > 0 ? (mean / disc) * 100 : 0;
+      const originRecip = conv > 0 ? (recip / conv) * 100 : 0;
+
+      byOrigin[oKey] = {
+        origin: oKey,
+        originLabel: ORIGIN_LABELS[oKey] || oKey,
+        totalDiscovered: disc,
+        totalMutualInterests: mut,
+        totalConversationsStarted: conv,
+        totalReciprocal: recip,
+        totalContinuous: cont,
+        totalMeaningful: mean,
+        mcrScorePercent: Math.round(originMCR * 10) / 10,
+        reciprocityRatePercent: Math.round(originRecip * 10) / 10
+      };
+    }
+
     return {
       totalDiscovered,
       totalMutualInterests,
@@ -474,9 +574,27 @@ export class HumanConnectionGraph {
       reciprocityRatePercent: Math.round(reciprocityRatePercent * 10) / 10,
       continuityRatePercent: Math.round(continuityRatePercent * 10) / 10,
       calculatedAt: Date.now(),
+      timeframe,
       byCountryPair,
-      byCommunity
+      byCommunity,
+      byOrigin
     };
+  }
+
+  /**
+   * Helper query: MCR desta semana (Últimos 7 dias)
+   */
+  public getMCRThisWeek(): MCRMetrics {
+    return this.calculateMCRMetrics({ timeframe: '7d' });
+  }
+
+  /**
+   * Helper query: MCR por origem da descoberta
+   */
+  public getMCRByOrigin(timeframe: '7d' | '30d' | 'all' = 'all'): Record<string, import('../types').MCROriginBreakdown> {
+    const metrics = this.calculateMCRMetrics({ timeframe });
+    return metrics.byOrigin || {};
+  }
   }
 
   /**
