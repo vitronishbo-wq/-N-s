@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "enoscplp",
     "public": "dist",
     "ignore": [
       "firebase.json",
