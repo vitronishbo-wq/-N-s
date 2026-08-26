@@ -148,6 +148,14 @@ export const GmailModal: React.FC<GmailModalProps> = ({
         await loadUserProfileAndMessages('inbox');
       }
     } catch (err: any) {
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request' ||
+        err?.message?.includes('popup-closed-by-user')
+      ) {
+        // User voluntarily closed or cancelled popup, no error needed
+        return;
+      }
       console.error('Sign in failed:', err);
       setAuthError(err.message || 'Não foi possível autorizar o acesso ao Gmail.');
     } finally {

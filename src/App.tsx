@@ -14,6 +14,7 @@ import {
 import { DEMO_LUSOFONE_PROFILES } from './constants';
 import { getInitialSignals, recordSignalEvent } from './services/signals';
 import { DiscoveryAppService } from './services/discoveryService';
+import { connectionGraph } from './services/connectionGraph';
 import { Onboarding } from './components/Onboarding';
 import { Discover } from './components/Discover';
 import { Conversations } from './components/Conversations';
@@ -165,6 +166,9 @@ export default function App() {
             setPrivacy(data);
             localStorage.setItem('enos_privacy', JSON.stringify(data));
           }
+
+          // Hydrate real Connection Graph telemetry & outcome learnings from Firestore
+          await connectionGraph.syncWithFirestore(activeUid);
         } catch (err) {
           console.info('Using fast local cached state:', err);
         } finally {

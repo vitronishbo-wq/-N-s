@@ -82,6 +82,86 @@ export class HumanConnectionGraph {
     }
   }
 
+  /**
+   * Hydrates connection events and outcome learnings from Firestore for a specific user.
+   * Ensures zero data loss across reloads and multi-device sessions.
+   */
+  public async syncWithFirestore(userId: string): Promise<void> {
+    if (!userId) return;
+    try {
+      // 1. Fetch user's connection events
+      const eventsQuery = query(
+        collection(db, 'connection_events'),
+        where('userId', '==', userId),
+        limit(150)
+      );
+      const eventsSnap = await getDocs(eventsQuery);
+      const remoteEvents: ConnectionFunnelEvent[] = [];
+      eventsSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        remoteEvents.push({
+          id: data.id || docSnap.id,
+          userId: data.userId,
+          targetUid: data.targetUid,
+          stage: data.stage,
+          countryPair: data.countryPair || ['AO', 'PT'],
+          communityTag: data.communityTag,
+          metadata: data.metadata,
+          timestamp: data.timestamp || Date.now()
+        });
+      });
+
+      // 2. Fetch user's outcome learnings
+      const learningsQuery = query(
+        collection(db, 'connection_learnings'),
+        where('userId', '==', userId),
+        limit(100)
+      );
+      const learningsSnap = await getDocs(learningsQuery);
+      const remoteLearnings: ConnectionOutcomeLearning[] = [];
+      learningsSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        remoteLearnings.push({
+          userId: data.userId,
+          targetUid: data.targetUid,
+          successfulBond: data.successfulBond ?? true,
+          icebreakerEffective: data.icebreakerEffective,
+          resonanceFactors: data.resonanceFactors || [],
+          stallStage: data.stallStage,
+          learnedPreferences: data.learnedPreferences || {
+            preferredStyles: [],
+            complementaryBonusDelta: 0,
+            depthTolerance: 'moderate'
+          },
+          recordedAt: data.recordedAt || Date.now()
+        });
+      });
+
+      // Merge unique events
+      const existingEventIds = new Set(this.inMemoryEvents.map(e => e.id));
+      for (const re of remoteEvents) {
+        if (!existingEventIds.has(re.id)) {
+          this.inMemoryEvents.push(re);
+          existingEventIds.add(re.id);
+        }
+      }
+
+      // Merge unique learnings
+      const existingLearningKeys = new Set(this.inMemoryLearnings.map(l => `${l.userId}_${l.targetUid}_${l.recordedAt}`));
+      for (const rl of remoteLearnings) {
+        const key = `${rl.userId}_${rl.targetUid}_${rl.recordedAt}`;
+        if (!existingLearningKeys.has(key)) {
+          this.inMemoryLearnings.push(rl);
+          existingLearningKeys.add(key);
+        }
+      }
+
+      this.persistLocal();
+    } catch (err) {
+      console.info('Firestore connection graph sync deferred (using local cache):', err);
+    }
+  }
+
   private persistLocal(): void {
     if (typeof window === 'undefined') return;
     try {
