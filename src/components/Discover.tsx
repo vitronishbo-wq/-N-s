@@ -475,58 +475,174 @@ export const Discover: React.FC<DiscoverProps> = ({
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.98, y: -8 }}
         transition={{ duration: 0.25, ease: 'easeOut' }}
-        className="bg-white rounded-2xl border border-stone-200/90 shadow-sm overflow-hidden flex flex-col"
+        className="discover-card-container bg-white rounded-2xl border border-stone-200/90 shadow-sm overflow-hidden flex flex-col"
       >
-        {/* TOP BAR: Discovery Mode Badge & Dominant Signal Pill */}
-        <div className="px-4 py-3 bg-stone-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1 bg-rose-500 text-white rounded-md">
+        {/* TOP HIGH-IMPACT DISCOVERY REASON HERO HEADER */}
+        <div className="p-4 sm:p-5 bg-gradient-to-br from-stone-900 via-stone-850 to-stone-900 text-white border-b border-stone-800 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-rose-400 uppercase">
               <Sparkles className="w-3.5 h-3.5" />
-            </span>
-            <span className="text-xs font-bold tracking-tight">
-              {discoveryModeLabel}
-            </span>
+              <span>Razão da Descoberta · {discoveryModeLabel}</span>
+            </div>
+
+            <div className="flex items-center gap-1 text-[10px] font-semibold bg-white/10 px-2.5 py-0.5 rounded-full border border-white/20">
+              {isDominantCultural ? (
+                <>
+                  <Globe className="w-3 h-3 text-emerald-400" />
+                  <span className="text-emerald-300">Ponte Cultural</span>
+                </>
+              ) : (
+                <>
+                  <Flame className="w-3 h-3 text-rose-400" />
+                  <span className="text-rose-300">Diálogo Expressivo</span>
+                </>
+              )}
+            </div>
           </div>
 
-          <div className="flex items-center gap-1 text-[10px] font-semibold bg-white/10 px-2 py-0.5 rounded-full border border-white/20">
-            {isDominantCultural ? (
-              <>
-                <Globe className="w-3 h-3 text-emerald-400" />
-                <span className="text-emerald-300">Elo Cultural Predominante</span>
-              </>
+          {/* High-impact dynamic discovery reason title */}
+          <div className="space-y-1.5">
+            <h2 className="text-base sm:text-lg font-serif font-semibold text-stone-100 leading-snug tracking-tight">
+              "{primaryReason}"
+            </h2>
+            {currentCandidate.connectionContext && (
+              <p className="text-xs text-stone-300 font-sans leading-relaxed">
+                {currentCandidate.connectionContext}
+              </p>
+            )}
+          </div>
+
+          {/* ROW OF PILL-SHAPED UI MARKERS (PURPLE FOR CULTURAL CONNECTION, GOLD FOR CONVERSATION POTENTIAL) */}
+          <div
+            id="discovery-reason-markers-row"
+            className="flex flex-wrap items-center gap-1.5 pt-1"
+            role="list"
+            aria-label="Marcadores de Afinidade e Conexão"
+          >
+            {/* PURPLE BADGES: Cultural Connection Signals */}
+            {culturalConnectionScore >= 60 && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-purple-950/70 text-purple-200 px-2.5 py-1 rounded-full border border-purple-500/40 shadow-2xs"
+                title={`Índice de Conexão Cultural: ${culturalConnectionScore}%`}
+              >
+                <Globe className="w-3 h-3 text-purple-300 shrink-0" aria-hidden="true" />
+                <span>Conexão Cultural ({culturalConnectionScore}%)</span>
+              </span>
+            )}
+
+            {targetProfile.countryCode !== myProfile.countryCode ? (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-purple-950/70 text-purple-200 px-2.5 py-1 rounded-full border border-purple-500/40 shadow-2xs"
+                title="Ponte entre diferentes nações da CPLP"
+              >
+                <span className="text-xs">{myCountryInfo.flag}</span>
+                <span className="text-[10px] text-purple-400">⟷</span>
+                <span className="text-xs">{countryInfo.flag}</span>
+                <span>Ponte Lusófona</span>
+              </span>
             ) : (
-              <>
-                <Flame className="w-3 h-3 text-rose-400" />
-                <span className="text-rose-300">Potencial Conversacional Alto</span>
-              </>
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-purple-950/70 text-purple-200 px-2.5 py-1 rounded-full border border-purple-500/40 shadow-2xs"
+                title="Vivência na mesma região cultural"
+              >
+                <MapPin className="w-3 h-3 text-purple-300 shrink-0" aria-hidden="true" />
+                <span>Mesma Região Cultural ({targetProfile.cityName})</span>
+              </span>
+            )}
+
+            {evidenceDetails?.culturalBridge && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-purple-950/70 text-purple-200 px-2.5 py-1 rounded-full border border-purple-500/40 shadow-2xs max-w-[280px] truncate"
+                title={evidenceDetails.culturalBridge}
+              >
+                <HeartHandshake className="w-3 h-3 text-purple-300 shrink-0" aria-hidden="true" />
+                <span className="truncate">{evidenceDetails.culturalBridge}</span>
+              </span>
+            )}
+
+            {/* GOLD / AMBER BADGES: Conversation Potential Signals */}
+            {conversationPotentialScore >= 60 && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-950/70 text-amber-200 px-2.5 py-1 rounded-full border border-amber-500/40 shadow-2xs"
+                title={`Índice de Potencial Conversacional: ${conversationPotentialScore}%`}
+              >
+                <MessageCircle className="w-3 h-3 text-amber-300 shrink-0" aria-hidden="true" />
+                <span>Potencial de Conversa ({conversationPotentialScore}%)</span>
+              </span>
+            )}
+
+            {targetProfile.online && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-950/70 text-amber-200 px-2.5 py-1 rounded-full border border-amber-500/40 shadow-2xs"
+                title="Membro com alta prontidão para responder"
+              >
+                <Zap className="w-3 h-3 text-amber-300 shrink-0" aria-hidden="true" />
+                <span>Online · Prontidão</span>
+              </span>
+            )}
+
+            {targetProfile.bio && targetProfile.bio.trim().length > 30 && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-950/70 text-amber-200 px-2.5 py-1 rounded-full border border-amber-500/40 shadow-2xs"
+                title="Perfil com apresentação detalhada e rica em contexto"
+              >
+                <Sparkles className="w-3 h-3 text-amber-300 shrink-0" aria-hidden="true" />
+                <span>Bio Expressiva</span>
+              </span>
+            )}
+
+            {((evidenceDetails?.conversationStarters?.length ?? 0) > 0 || currentCandidate.conversationPrompt) && (
+              <span
+                role="listitem"
+                className="inline-flex items-center gap-1 text-[11px] font-semibold bg-amber-950/70 text-amber-200 px-2.5 py-1 rounded-full border border-amber-500/40 shadow-2xs"
+                title="Quebra-gelo sugerido disponível"
+              >
+                <Flame className="w-3 h-3 text-amber-300 shrink-0" aria-hidden="true" />
+                <span>Quebra-Gelo Ativo</span>
+              </span>
             )}
           </div>
         </div>
 
         <div className="p-4 sm:p-5 space-y-4">
-          {/* ─────────────────────────────────────────────────────────
-              HERO: REASON FOR DISCOVERY (EMPHASIZED)
-              ───────────────────────────────────────────────────────── */}
-          <div className="p-4 rounded-xl bg-gradient-to-br from-rose-50/70 via-stone-50 to-amber-50/40 border border-rose-100/80 shadow-2xs space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-950 uppercase tracking-wider">
-                <HeartHandshake className="w-3.5 h-3.5 text-rose-600" />
-                <span>Razão da Descoberta</span>
-              </div>
-              <span className="text-[10px] font-medium text-stone-500">
-                Score Integrado: {Math.round((prioritization?.finalCompositeRank ?? 0.8) * 100)} pts
+          {/* CANDIDATE IDENTITY BLOCK (POSITIONED DIRECTLY BELOW REASON HEADER) */}
+          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+            <div className="flex items-center gap-2.5">
+              <span className="text-2xl" role="img" aria-label={targetProfile.countryName}>
+                {countryInfo.flag}
               </span>
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-stone-900 text-base leading-none">
+                    {targetProfile.displayName}, {targetProfile.age}
+                  </h3>
+                  {targetProfile.verificationStatus === 'verified' && (
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" title="Perfil Verificado" />
+                  )}
+                </div>
+                <p className="text-xs text-stone-500 font-medium flex items-center gap-1 mt-1">
+                  <MapPin className="w-3 h-3 text-stone-400" />
+                  <span>{targetProfile.cityName}, {targetProfile.countryName}</span>
+                </p>
+              </div>
             </div>
 
-            <p className="text-sm sm:text-base font-serif italic text-stone-900 font-semibold leading-snug">
-              "{primaryReason}"
-            </p>
-
-            {currentCandidate.connectionContext && (
-              <p className="text-xs text-stone-600 leading-relaxed border-t border-rose-100/60 pt-2 font-sans">
-                {currentCandidate.connectionContext}
-              </p>
-            )}
+            <div className="flex flex-col items-end gap-1">
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>{targetProfile.online ? 'Online' : 'Membro Ativo'}</span>
+              </span>
+              <span className="text-[10px] text-stone-400 font-medium">
+                Relevância: {Math.round((prioritization?.finalCompositeRank ?? 0.85) * 100)}%
+              </span>
+            </div>
           </div>
 
           {/* ─────────────────────────────────────────────────────────
