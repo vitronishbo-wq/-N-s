@@ -24,17 +24,20 @@ import {
   Volume2,
   Send,
   HelpCircle,
-  Activity,
   ArrowRight,
   UserCheck,
   Compass,
-  Radio,
   HeartHandshake,
   Lightbulb,
-  CheckCircle,
+  CheckCircle2,
   Clock,
   Flame,
-  VolumeX
+  VolumeX,
+  ChevronLeft,
+  ChevronRight,
+  TrendingUp,
+  Award,
+  Zap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -51,7 +54,7 @@ interface DiscoverProps {
   onOpenPreferences?: () => void;
 }
 
-// 2.6: Pergunta que Une data contract
+// Pergunta que Une data contract
 interface CommunityQuestion {
   id: string;
   question: string;
@@ -89,18 +92,6 @@ const LUSOFONE_QUESTIONS: CommunityQuestion[] = [
         answer: 'A Morna "Sodade" cantada à capela ao entardecer no Mindelo.',
         highlight: 'Morna & Sodade',
         timeAgo: 'há 1h'
-      },
-      {
-        candidateUid: 'demo_camila_br',
-        answer: 'Os tambores do Olodum ecoando pelo Pelourinho em Salvador.',
-        highlight: 'Axé & Conexão Afro-Brasileira',
-        timeAgo: 'há 2h'
-      },
-      {
-        candidateUid: 'demo_antonio_mz',
-        answer: 'Marrabenta animada tocada na rádio comunitária em Maputo.',
-        highlight: 'Marrabenta & Energia',
-        timeAgo: 'há 3h'
       }
     ]
   },
@@ -121,12 +112,6 @@ const LUSOFONE_QUESTIONS: CommunityQuestion[] = [
         answer: 'A Baía do Porto Grande no Mindelo, onde todos os barcos trazem histórias.',
         highlight: 'Mar & Encontros',
         timeAgo: 'há 45m'
-      },
-      {
-        candidateUid: 'demo_antonio_mz',
-        answer: 'A praia da Costa do Sol ao pôr-do-sol quando a cidade desacelera.',
-        highlight: 'Calmaria & Oceano',
-        timeAgo: 'há 2h'
       }
     ]
   },
@@ -141,12 +126,6 @@ const LUSOFONE_QUESTIONS: CommunityQuestion[] = [
         answer: 'Sinceridade no olhar, sentido de humor e respeito pelos valores familiares.',
         highlight: 'Sinceridade & Valores',
         timeAgo: 'há 20m'
-      },
-      {
-        candidateUid: 'demo_camila_br',
-        answer: 'Gente com coração generoso, que ri alto e não tem medo de ser autêntica.',
-        highlight: 'Leveza & Verdade',
-        timeAgo: 'há 1h'
       }
     ]
   }
@@ -174,12 +153,13 @@ export const Discover: React.FC<DiscoverProps> = ({
   const [scarcityMessage, setScarcityMessage] = useState<string | undefined>(undefined);
   const [selectiveAiExplanation, setSelectiveAiExplanation] = useState<string | null>(null);
   const [loadingAi, setLoadingAi] = useState(false);
+  const [showCommunityPrompt, setShowCommunityPrompt] = useState(false);
 
-  // 2.12: Progressive revelation phase: 'affinity' -> 'curiosity' -> 'revelation' -> 'conversation'
+  // Progressive revelation phase: 'affinity' -> 'curiosity' -> 'revelation' -> 'conversation'
   const [activeStep, setActiveStep] = useState<'affinity' | 'curiosity' | 'revelation' | 'conversation'>('affinity');
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-  // 2.6 & 2.7: Pergunta que Une State
+  // Pergunta que Une State
   const [selectedQuestionIdx, setSelectedQuestionIdx] = useState(0);
   const [userQuestionResponse, setUserQuestionResponse] = useState('');
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
@@ -216,7 +196,7 @@ export const Discover: React.FC<DiscoverProps> = ({
     signals.blockedUids.length
   ]);
 
-  // 2.2 & 2.3: Singular contextual candidate prioritizer
+  // Single-card focused candidate
   const currentCandidate: DiscoveryCandidate | undefined = candidates[currentIndex];
   const targetProfile = currentCandidate?.profile;
 
@@ -227,14 +207,15 @@ export const Discover: React.FC<DiscoverProps> = ({
     }
   }, [currentIndex, candidates]);
 
-  // Record candidate seen & telemetry persistence (2.18 & 2.19)
+  // Record candidate seen & telemetry persistence
   useEffect(() => {
     if (targetProfile && myProfile?.uid) {
       onRecordSeen(targetProfile.uid);
       discoveryService.markSeenInSession(targetProfile.uid);
       persistDiscoveryEvent(myProfile.uid, targetProfile.uid, 'candidate_shown', {
         compatibilityReasons: currentCandidate?.compatibilityReasons || [],
-        compositeRank: currentCandidate?.prioritizationScore?.finalCompositeRank || 0
+        compositeRank: currentCandidate?.prioritizationScore?.finalCompositeRank || 0,
+        discoveryMode: currentCandidate?.discoveryMode
       });
     }
   }, [targetProfile?.uid, myProfile?.uid]);
@@ -246,7 +227,7 @@ export const Discover: React.FC<DiscoverProps> = ({
     setIsPlayingAudio(false);
   }, [targetProfile?.uid]);
 
-  // AI Explainer on demand (2.5)
+  // AI Explainer on demand
   const handleRequestAiInsight = async () => {
     if (!targetProfile || loadingAi || !myProfile?.uid) return;
     setLoadingAi(true);
@@ -277,23 +258,28 @@ export const Discover: React.FC<DiscoverProps> = ({
     }
   };
 
-  // 2.9 & 2.12: Initiate Conversation with Reason Context
+  // Initiate Conversation with Reason Context
   const handleInitiateApproach = (customReason?: string) => {
     if (!currentCandidate || !myProfile?.uid) return;
 
     confetti({
-      particleCount: 35,
-      spread: 60,
+      particleCount: 40,
+      spread: 65,
       origin: { y: 0.8 },
-      colors: ['#e11d48', '#fb7185', '#f43f5e']
+      colors: ['#e11d48', '#fb7185', '#0d9488', '#f59e0b']
     });
 
-    const reasonToUse = customReason || currentCandidate.discoveryReason || currentCandidate.compatibilityReasons[0] || 'valores e vivências';
-    const contextText = customReason
-      ? `Olá, ${targetProfile?.displayName}! Fiquei curioso(a) com a nossa conexão sobre "${customReason}". Vamos conversar? 🌍✨`
-      : `Olá, ${targetProfile?.displayName}! Notei a nossa afinidade em ${reasonToUse}. Adoraria trocar ideias!`;
+    const starterPrompt = currentCandidate.conversationPrompt ||
+      (currentCandidate.evidenceDetails?.conversationStarters?.[0]) ||
+      undefined;
 
-    // 2.18 & 2.19 & 3.7: Persist approach telemetry with discoveryMode
+    const reasonToUse = customReason || starterPrompt || currentCandidate.discoveryReason || currentCandidate.compatibilityReasons[0] || 'valores e vivências';
+    const contextText = customReason
+      ? `Olá, ${targetProfile?.displayName}! Fiquei com curiosidade em relação à nossa afinidade: "${customReason}". Vamos conversar? 🌍✨`
+      : starterPrompt
+        ? `Olá, ${targetProfile?.displayName}! ${starterPrompt} Adoraria trocar impressões contigo!`
+        : `Olá, ${targetProfile?.displayName}! Notei a nossa afinidade em ${reasonToUse}. Adoraria trocar ideias!`;
+
     persistDiscoveryEvent(myProfile.uid, targetProfile?.uid || '', 'approach_initiated', {
       contextReason: reasonToUse,
       discoveryMode: currentCandidate.discoveryMode
@@ -311,7 +297,13 @@ export const Discover: React.FC<DiscoverProps> = ({
     setCurrentIndex(prev => prev + 1);
   };
 
-  // 2.7: Persist user response to Firestore
+  const handlePrevSignal = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+    }
+  };
+
+  // Persist user community answer
   const handleSaveUserResponse = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userQuestionResponse.trim() || !myProfile?.uid) return;
@@ -346,57 +338,36 @@ export const Discover: React.FC<DiscoverProps> = ({
 
   const currentQuestion = LUSOFONE_QUESTIONS[selectedQuestionIdx];
 
-  // Helper to find a candidate matching sample answer (2.8)
-  const findCandidateByUid = (uid: string): DiscoveryCandidate | undefined => {
-    return candidates.find(c => c.profile.uid === uid) ||
-      (candidatePool.find(p => p.uid === uid)
-        ? {
-            profile: candidatePool.find(p => p.uid === uid)!,
-            compatibilityScore: 88,
-            deterministicScore: 85,
-            contextScore: 3,
-            noveltyBonus: 0,
-            confidence: 0.9,
-            compatibilityReasons: ['Sintonia viva em Pergunta da Comunidade'],
-            compatibilityResult: {
-              score: 88,
-              reasons: ['Sintonia viva em Pergunta da Comunidade'],
-              sharedInterests: [],
-              intentAlignment: 'compatible',
-              culturalConnection: 'cross_cultural_cplp',
-              confidence: 0.9
-            }
-          }
-        : undefined);
-  };
-
+  // Empty or Exhausted state
   if (!targetProfile || currentIndex >= candidates.length || availability === 'NO_CANDIDATES') {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto">
+      <div id="discover-empty-state" className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-sm mx-auto min-h-[70vh]">
         <div className="w-16 h-16 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center mb-4 text-rose-600 shadow-2xs">
           <Globe className="w-8 h-8" />
         </div>
-        <h3 className="text-lg font-bold text-stone-900 mb-2">O teu Agora está em dia</h3>
+        <h3 className="text-lg font-bold text-stone-900 mb-2">O teu Foco está Concluído</h3>
         <p className="text-xs text-stone-600 leading-relaxed mb-6">
-          {scarcityMessage || 'Você explorou todas as razões de descoberta disponíveis para este momento.'}
+          {scarcityMessage || 'Você explorou todas as razões de descoberta prioritárias disponíveis para este momento.'}
         </p>
 
         <div className="flex flex-col gap-2 w-full">
           <button
             type="button"
+            id="btn-reset-discovery-session"
             onClick={() => {
               discoveryService.resetSession();
               setCurrentIndex(0);
             }}
-            className="w-full py-2.5 bg-stone-900 text-white rounded-xl font-medium text-xs hover:bg-stone-800 transition flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full py-2.5 bg-stone-900 text-white rounded-xl font-medium text-xs hover:bg-stone-800 transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Rever Sinais e Conexões</span>
+            <span>Rever Foco de Descoberta</span>
           </button>
 
           {onOpenPreferences && (
             <button
               type="button"
+              id="btn-open-preferences"
               onClick={onOpenPreferences}
               className="w-full py-2.5 bg-white border border-stone-200 text-stone-700 rounded-xl font-medium text-xs hover:bg-stone-50 transition flex items-center justify-center gap-2 cursor-pointer"
             >
@@ -410,15 +381,26 @@ export const Discover: React.FC<DiscoverProps> = ({
   }
 
   const countryInfo = CPLP_COUNTRIES[targetProfile.countryCode] || { flag: '🌍', name: targetProfile.countryName };
+  const myCountryInfo = CPLP_COUNTRIES[myProfile.countryCode] || { flag: '🌍', name: myProfile.countryName };
 
-  // Primary Discovery Reason (3.1 & 3.2: Evidence-Grounded Reason-First)
+  // Primary Discovery Reason & Mode
   const primaryReason = currentCandidate.discoveryReason ||
     currentCandidate.crossCulturalHighlight ||
     currentCandidate.compatibilityReasons[0] ||
-    `Sintonia de vivências entre ${myProfile.cityName} e ${targetProfile.cityName}`;
+    `Sintonia de vivências e referências entre ${myProfile.cityName} e ${targetProfile.cityName}`;
 
   const evidenceDetails = currentCandidate.evidenceDetails;
-  const evidenceItems = Array.isArray(currentCandidate.evidence) ? currentCandidate.evidence : [];
+  const prioritization = currentCandidate.prioritizationScore;
+
+  // Numerical metrics computed by Reason-First heuristic
+  const culturalConnectionScore = prioritization?.culturalConnection
+    ? Math.round(prioritization.culturalConnection * 100)
+    : 80;
+  const conversationPotentialScore = prioritization?.conversationPotential
+    ? Math.round(prioritization.conversationPotential * 100)
+    : 85;
+
+  const isDominantCultural = culturalConnectionScore >= conversationPotentialScore;
 
   const discoveryModeLabel = currentCandidate.discoveryMode === 'CULTURAL_BRIDGE'
     ? 'Ponte Cultural'
@@ -431,29 +413,53 @@ export const Discover: React.FC<DiscoverProps> = ({
           : 'Sintonia Autêntica';
 
   return (
-    <div className="flex-1 flex flex-col max-w-md mx-auto w-full p-4 pb-24 space-y-6">
-      {/* Top Header of "O teu Agora" (2.1: Intelligent Layer over Discovery) */}
+    <div id="discover-single-card-view" className="flex-1 flex flex-col max-w-lg mx-auto w-full p-4 pb-24 space-y-4">
+      {/* ─────────────────────────────────────────────────────────────
+          HEADER: FOCUS BAR & PROGRESS COUNTER
+          ───────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between border-b border-stone-200/80 pb-3">
-        <div>
-          <div className="flex items-center gap-1.5 text-xs text-rose-600 font-bold uppercase tracking-wider">
-            <Compass className="w-3.5 h-3.5" />
-            <span>O teu Agora</span>
+        <div className="flex items-center gap-2">
+          <div className="w-7 h-7 rounded-lg bg-rose-600 text-white flex items-center justify-center shadow-2xs">
+            <Compass className="w-4 h-4" />
           </div>
-          <p className="text-xs text-stone-500 font-medium mt-0.5">
-            Sinais, perguntas e encontros ao vivo na Lusofonia
-          </p>
+          <div>
+            <div className="flex items-center gap-1.5 text-xs text-stone-900 font-bold tracking-tight">
+              <span>Foco de Descoberta</span>
+              <span className="text-[10px] font-semibold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded border border-rose-200">
+                {currentIndex + 1} de {candidates.length}
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-500 font-medium">
+              Avaliação orientada por Razão, Cultura e Diálogo
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Pulso Vivo</span>
-          </span>
+        <div className="flex items-center gap-1.5">
+          {/* Navigation between cards */}
+          <button
+            type="button"
+            onClick={handlePrevSignal}
+            disabled={currentIndex === 0}
+            title="Sinal anterior"
+            className="p-1.5 rounded-lg border border-stone-200 text-stone-600 disabled:opacity-30 hover:bg-stone-50 transition cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNextSignal}
+            disabled={currentIndex >= candidates.length - 1}
+            title="Próximo sinal"
+            className="p-1.5 rounded-lg border border-stone-200 text-stone-600 disabled:opacity-30 hover:bg-stone-50 transition cursor-pointer"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
           <button
             type="button"
             onClick={() => onReport(currentCandidate)}
             title="Denunciar / Segurança"
-            className="text-stone-400 hover:text-stone-700 p-1 rounded-lg transition cursor-pointer"
+            className="text-stone-400 hover:text-stone-700 p-1.5 rounded-lg transition cursor-pointer"
           >
             <ShieldAlert className="w-4 h-4" />
           </button>
@@ -461,121 +467,148 @@ export const Discover: React.FC<DiscoverProps> = ({
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          SUPERFÍCIE 1: CONEXÃO IMPROVÁVEL (2.2, 2.3, 2.4, 2.5, 3.1: Singular Candidate Experience)
-          "Há uma pessoa que devias conhecer. Eis porquê."
+          SINGLE FOCUSED CARD (CARD PRINCIPAL DE DESCOBERTA)
           ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
-        {/* 2.4: Presentation Banner */}
-        <div className="px-4 py-3 bg-gradient-to-r from-rose-50 via-amber-50/40 to-white border-b border-stone-100 flex items-center justify-between">
+      <motion.div
+        key={targetProfile.uid}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.98, y: -8 }}
+        transition={{ duration: 0.25, ease: 'easeOut' }}
+        className="bg-white rounded-2xl border border-stone-200/90 shadow-sm overflow-hidden flex flex-col"
+      >
+        {/* TOP BAR: Discovery Mode Badge & Dominant Signal Pill */}
+        <div className="px-4 py-3 bg-stone-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-rose-600 text-white rounded-lg shadow-2xs">
-              <HeartHandshake className="w-3.5 h-3.5" />
+            <span className="p-1 bg-rose-500 text-white rounded-md">
+              <Sparkles className="w-3.5 h-3.5" />
             </span>
-            <div>
-              <h2 className="text-xs font-bold text-stone-900 tracking-tight">Conexão Improvável</h2>
-              <span className="text-[10px] text-rose-700 font-medium">Há uma pessoa que devias conhecer. Eis porquê:</span>
-            </div>
+            <span className="text-xs font-bold tracking-tight">
+              {discoveryModeLabel}
+            </span>
           </div>
 
-          <span className="text-[10px] bg-rose-100/70 text-rose-800 font-bold px-2 py-0.5 rounded-full border border-rose-200">
-            {discoveryModeLabel}
-          </span>
+          <div className="flex items-center gap-1 text-[10px] font-semibold bg-white/10 px-2 py-0.5 rounded-full border border-white/20">
+            {isDominantCultural ? (
+              <>
+                <Globe className="w-3 h-3 text-emerald-400" />
+                <span className="text-emerald-300">Elo Cultural Predominante</span>
+              </>
+            ) : (
+              <>
+                <Flame className="w-3 h-3 text-rose-400" />
+                <span className="text-rose-300">Potencial Conversacional Alto</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* 3.2: Composed Real Evidence Header (Interests + Intent + Context + Signals + Differences) */}
-          <div className="bg-stone-50 rounded-xl p-3.5 border border-stone-200/80 space-y-2.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-stone-800 uppercase tracking-wide">
-              <Flame className="w-3.5 h-3.5 text-rose-500" />
-              <span>Razão da Descoberta</span>
+        <div className="p-4 sm:p-5 space-y-4">
+          {/* ─────────────────────────────────────────────────────────
+              HERO: REASON FOR DISCOVERY (EMPHASIZED)
+              ───────────────────────────────────────────────────────── */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-rose-50/70 via-stone-50 to-amber-50/40 border border-rose-100/80 shadow-2xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-rose-950 uppercase tracking-wider">
+                <HeartHandshake className="w-3.5 h-3.5 text-rose-600" />
+                <span>Razão da Descoberta</span>
+              </div>
+              <span className="text-[10px] font-medium text-stone-500">
+                Score Integrado: {Math.round((prioritization?.finalCompositeRank ?? 0.8) * 100)} pts
+              </span>
             </div>
-            
-            <p className="text-xs text-stone-900 font-semibold leading-relaxed">
+
+            <p className="text-sm sm:text-base font-serif italic text-stone-900 font-semibold leading-snug">
               "{primaryReason}"
             </p>
 
-            {/* Evidence Chips */}
-            <div className="space-y-1.5 pt-1">
-              {evidenceDetails?.culturalBridge && (
-                <div className="flex items-center gap-1.5 text-[10px] text-stone-700">
-                  <Globe className="w-3 h-3 text-rose-500 shrink-0" />
-                  <span>{evidenceDetails.culturalBridge}</span>
-                </div>
-              )}
-              {evidenceDetails?.intentMatch && (
-                <div className="flex items-center gap-1.5 text-[10px] text-stone-700">
-                  <CheckCircle className="w-3 h-3 text-emerald-600 shrink-0" />
-                  <span>{evidenceDetails.intentMatch}</span>
-                </div>
-              )}
-              {evidenceDetails?.sharedInterests && evidenceDetails.sharedInterests.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1 pt-0.5">
-                  <span className="text-[10px] text-stone-500 font-medium mr-1">Afinidades:</span>
-                  {evidenceDetails.sharedInterests.map((interest, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center text-[10px] font-medium bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md border border-rose-200/60"
-                    >
-                      {interest}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {evidenceDetails?.relevantDifferences && evidenceDetails.relevantDifferences.length > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-stone-500 italic pt-0.5">
-                  <Lightbulb className="w-3 h-3 text-amber-500 shrink-0" />
-                  <span>Diferença enriquecedora: {evidenceDetails.relevantDifferences[0]}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 2.5: Contextual Explainability */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-stone-800 flex items-center gap-1">
-                <Layers className="w-3.5 h-3.5 text-stone-500" />
-                <span>Explicabilidade Contextual</span>
-              </span>
-              {!selectiveAiExplanation && (
-                <button
-                  type="button"
-                  onClick={handleRequestAiInsight}
-                  disabled={loadingAi}
-                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  {loadingAi ? 'Analisando...' : 'Aprofundar com IA'}
-                </button>
-              )}
-            </div>
-
-            {selectiveAiExplanation ? (
-              <div className="p-2.5 bg-rose-50/60 rounded-xl border border-rose-100 text-xs text-stone-800 leading-relaxed italic">
-                {selectiveAiExplanation}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <div className="p-2 bg-stone-50 rounded-lg border border-stone-100">
-                  <span className="text-stone-500 block text-[10px]">Origem & Residência</span>
-                  <span className="font-medium text-stone-800">{targetProfile.cityName}, {targetProfile.countryName}</span>
-                </div>
-                <div className="p-2 bg-stone-50 rounded-lg border border-stone-100">
-                  <span className="text-stone-500 block text-[10px]">Status na Comunidade</span>
-                  <span className="font-medium text-stone-800">{targetProfile.online ? 'Online agora' : 'Membro ativo'}</span>
-                </div>
-              </div>
+            {currentCandidate.connectionContext && (
+              <p className="text-xs text-stone-600 leading-relaxed border-t border-rose-100/60 pt-2 font-sans">
+                {currentCandidate.connectionContext}
+              </p>
             )}
           </div>
 
-          {/* 2.12: Progressive Revelation: Afinidade → Curiosidade → Revelação → Conversa */}
-          <div className="pt-2 border-t border-stone-100 space-y-3">
-            {/* Step Navigation Bar */}
+          {/* ─────────────────────────────────────────────────────────
+              DYNAMIC UI MARKERS: Cultural Connection vs Conversation Potential
+              ───────────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* MARKER 1: CULTURAL CONNECTION */}
+            <div
+              id="marker-cultural-connection"
+              className={`p-3 rounded-xl border transition-all ${
+                isDominantCultural
+                  ? 'bg-teal-50/80 border-teal-200 ring-1 ring-teal-300/50'
+                  : 'bg-stone-50 border-stone-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-teal-950">
+                  <Globe className="w-3.5 h-3.5 text-teal-600" />
+                  <span>Conexão Cultural</span>
+                </span>
+                <span className="text-[10px] font-bold bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full border border-teal-200">
+                  {culturalConnectionScore}%
+                </span>
+              </div>
+
+              {/* Bilateral Flags and Regional Synergy */}
+              <div className="flex items-center gap-1.5 text-[11px] text-teal-900 font-medium py-1">
+                <span className="text-sm">{myCountryInfo.flag}</span>
+                <span>{myProfile.cityName}</span>
+                <span className="text-teal-400 font-bold">⟷</span>
+                <span className="text-sm">{countryInfo.flag}</span>
+                <span>{targetProfile.cityName}</span>
+              </div>
+
+              <p className="text-[10px] text-teal-800 leading-tight mt-0.5 line-clamp-2">
+                {evidenceDetails?.culturalBridge || 'Partilha de tradições, identidade atlântica e raízes da Lusofonia.'}
+              </p>
+            </div>
+
+            {/* MARKER 2: CONVERSATION POTENTIAL */}
+            <div
+              id="marker-conversation-potential"
+              className={`p-3 rounded-xl border transition-all ${
+                !isDominantCultural
+                  ? 'bg-rose-50/80 border-rose-200 ring-1 ring-rose-300/50'
+                  : 'bg-stone-50 border-stone-200/80'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-rose-950">
+                  <MessageCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Potencial de Conversa</span>
+                </span>
+                <span className="text-[10px] font-bold bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full border border-rose-200">
+                  {conversationPotentialScore}%
+                </span>
+              </div>
+
+              {/* Conversation Trigger Cue */}
+              <div className="flex items-center gap-1.5 text-[11px] text-rose-900 font-medium py-1">
+                <Zap className="w-3 h-3 text-rose-500 shrink-0" />
+                <span className="truncate">
+                  {targetProfile.online ? 'Online agora · Resposta rápida' : 'Bio profunda & ativa'}
+                </span>
+              </div>
+
+              <p className="text-[10px] text-rose-800 leading-tight mt-0.5 line-clamp-2">
+                {currentCandidate.conversationPrompt || (evidenceDetails?.conversationStarters?.[0] ?? 'Pontos de diálogo e curiosidades para iniciar a troca.')}
+              </p>
+            </div>
+          </div>
+
+          {/* ─────────────────────────────────────────────────────────
+              PROGRESSIVE REVELATION TABS
+              ───────────────────────────────────────────────────────── */}
+          <div className="space-y-3 pt-1 border-t border-stone-100">
             <div className="flex items-center justify-between bg-stone-100 p-1 rounded-xl text-[10px] font-semibold text-stone-600">
               <button
                 type="button"
+                id="tab-step-affinity"
                 onClick={() => setActiveStep('affinity')}
-                className={`flex-1 py-1 rounded-lg transition text-center cursor-pointer ${
+                className={`flex-1 py-1.5 rounded-lg transition text-center cursor-pointer ${
                   activeStep === 'affinity' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
                 }`}
               >
@@ -583,17 +616,19 @@ export const Discover: React.FC<DiscoverProps> = ({
               </button>
               <button
                 type="button"
+                id="tab-step-curiosity"
                 onClick={() => setActiveStep('curiosity')}
-                className={`flex-1 py-1 rounded-lg transition text-center cursor-pointer ${
+                className={`flex-1 py-1.5 rounded-lg transition text-center cursor-pointer ${
                   activeStep === 'curiosity' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
                 }`}
               >
-                2. Curiosidade
+                2. Expressão
               </button>
               <button
                 type="button"
+                id="tab-step-revelation"
                 onClick={() => setActiveStep('revelation')}
-                className={`flex-1 py-1 rounded-lg transition text-center cursor-pointer ${
+                className={`flex-1 py-1.5 rounded-lg transition text-center cursor-pointer ${
                   activeStep === 'revelation' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
                 }`}
               >
@@ -601,16 +636,17 @@ export const Discover: React.FC<DiscoverProps> = ({
               </button>
               <button
                 type="button"
+                id="tab-step-conversation"
                 onClick={() => setActiveStep('conversation')}
-                className={`flex-1 py-1 rounded-lg transition text-center cursor-pointer ${
+                className={`flex-1 py-1.5 rounded-lg transition text-center cursor-pointer ${
                   activeStep === 'conversation' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
                 }`}
               >
-                4. Pessoa
+                4. Presença
               </button>
             </div>
 
-            {/* Step Content */}
+            {/* TAB CONTENT PANELS */}
             <AnimatePresence mode="wait">
               {activeStep === 'affinity' && (
                 <motion.div
@@ -618,32 +654,47 @@ export const Discover: React.FC<DiscoverProps> = ({
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  className="space-y-2"
+                  className="space-y-2.5 p-3 bg-stone-50 rounded-xl border border-stone-200/70"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">{countryInfo.flag}</span>
-                    <div>
-                      <h3 className="font-bold text-stone-900 text-sm">{targetProfile.displayName}, {targetProfile.age}</h3>
-                      <p className="text-[11px] text-stone-500 flex items-center gap-1">
-                        <MapPin className="w-3 h-3 text-stone-400" />
-                        <span>{targetProfile.cityName}, {targetProfile.countryName}</span>
-                      </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl">{countryInfo.flag}</span>
+                      <div>
+                        <h3 className="font-bold text-stone-900 text-sm">{targetProfile.displayName}, {targetProfile.age}</h3>
+                        <p className="text-[11px] text-stone-500 flex items-center gap-1">
+                          <MapPin className="w-3 h-3 text-stone-400" />
+                          <span>{targetProfile.cityName}, {targetProfile.countryName}</span>
+                        </p>
+                      </div>
                     </div>
+
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      <span>{targetProfile.online ? 'Online' : 'Ativo recentemente'}</span>
+                    </span>
                   </div>
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {targetProfile.interests.map(i => {
-                      const isShared = myProfile.interests.includes(i);
-                      return (
-                        <span
-                          key={i}
-                          className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                            isShared ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-stone-100 text-stone-600'
-                          }`}
-                        >
-                          {i}
-                        </span>
-                      );
-                    })}
+
+                  <div className="pt-1">
+                    <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block mb-1.5">
+                      Interesses & Afinidades Partilhadas
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {targetProfile.interests.map(i => {
+                        const isShared = myProfile.interests.includes(i);
+                        return (
+                          <span
+                            key={i}
+                            className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              isShared
+                                ? 'bg-rose-100/80 text-rose-800 border border-rose-200 font-bold'
+                                : 'bg-white text-stone-600 border border-stone-200'
+                            }`}
+                          >
+                            {isShared ? `✓ ${i}` : i}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
                 </motion.div>
               )}
@@ -654,20 +705,23 @@ export const Discover: React.FC<DiscoverProps> = ({
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  className="p-3 bg-stone-50 rounded-xl border border-stone-200/80 space-y-2"
+                  className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/80 space-y-2.5"
                 >
-                  <span className="text-[10px] font-bold text-stone-500 uppercase block">Expressão & Essência</span>
-                  <p className="text-xs text-stone-800 leading-relaxed font-serif italic">
+                  <span className="text-[10px] font-bold text-stone-500 uppercase block">Bio & Perspetiva de Vida</span>
+                  <p className="text-xs text-stone-800 leading-relaxed font-serif italic bg-white p-2.5 rounded-lg border border-stone-200/60">
                     "{targetProfile.bio || 'Criando pontes e conexões genuínas na comunidade lusófona.'}"
                   </p>
-                  {evidenceDetails?.conversationStarters && evidenceDetails.conversationStarters.length > 0 && (
-                    <div className="pt-1 border-t border-stone-200/50">
-                      <span className="text-[9px] font-bold text-rose-800 uppercase block mb-1">Ponto de partida sugerido:</span>
-                      <p className="text-[11px] text-stone-700 bg-white p-2 rounded-lg border border-stone-200/70">
-                        "{evidenceDetails.conversationStarters[0]}"
-                      </p>
-                    </div>
-                  )}
+
+                  {/* Conversation Starter Prompt */}
+                  <div className="pt-1">
+                    <span className="text-[10px] font-bold text-rose-800 uppercase flex items-center gap-1 mb-1">
+                      <Lightbulb className="w-3 h-3 text-amber-500" />
+                      <span>Ponto de partida sugerido:</span>
+                    </span>
+                    <p className="text-[11px] text-stone-700 bg-amber-50/60 p-2 rounded-lg border border-amber-200/60 font-medium">
+                      "{currentCandidate.conversationPrompt || evidenceDetails?.conversationStarters?.[0] || 'O que mais te apaixona na tua cidade e cultura?'}"
+                    </p>
+                  </div>
                 </motion.div>
               )}
 
@@ -677,21 +731,22 @@ export const Discover: React.FC<DiscoverProps> = ({
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -4 }}
-                  className="p-3 bg-rose-50/50 rounded-xl border border-rose-100 space-y-2"
+                  className="p-3.5 bg-rose-50/50 rounded-xl border border-rose-100 space-y-2.5"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold text-rose-900 flex items-center gap-1.5">
                       <Volume2 className="w-3.5 h-3.5 text-rose-600" />
-                      <span>Cadência, Sotaque e Calor</span>
+                      <span>Cadência, Sotaque e Calor Lusófono</span>
                     </span>
                     <span className="text-[10px] text-stone-500">15s de voz</span>
                   </div>
 
-                  <div className="flex items-center gap-3 bg-white p-2.5 rounded-xl border border-rose-200/60">
+                  <div className="flex items-center gap-3 bg-white p-3 rounded-xl border border-rose-200/60 shadow-2xs">
                     <button
                       type="button"
+                      id="btn-toggle-voice-audio"
                       onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                      className="w-8 h-8 rounded-full bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 transition cursor-pointer shadow-xs shrink-0"
+                      className="w-9 h-9 rounded-full bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 transition cursor-pointer shadow-xs shrink-0"
                     >
                       {isPlayingAudio ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                     </button>
@@ -707,8 +762,8 @@ export const Discover: React.FC<DiscoverProps> = ({
                           />
                         ))}
                       </div>
-                      <span className="text-[9px] text-stone-500 block mt-1">
-                        {isPlayingAudio ? 'Ouvindo tom caloroso...' : 'Toque para escutar a voz e tom'}
+                      <span className="text-[9px] text-stone-500 block mt-1 font-medium">
+                        {isPlayingAudio ? 'A reproduzir cadência autêntica...' : 'Toque para escutar a voz e o sotaque'}
                       </span>
                     </div>
                   </div>
@@ -729,8 +784,8 @@ export const Discover: React.FC<DiscoverProps> = ({
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-                  <div className="absolute bottom-2.5 left-3 right-3 text-white flex items-center justify-between">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  <div className="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between">
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-sm">{targetProfile.displayName}, {targetProfile.age}</span>
@@ -738,20 +793,46 @@ export const Discover: React.FC<DiscoverProps> = ({
                       </div>
                       <p className="text-[10px] text-white/80">{targetProfile.cityName}, {targetProfile.countryName}</p>
                     </div>
-                    <span className="text-xl">{countryInfo.flag}</span>
+                    <span className="text-2xl">{countryInfo.flag}</span>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
           </div>
 
-          {/* Action Buttons: 2.9 & 2.12: Aproximação (Conversa) vs Próximo Sinal */}
+          {/* AI EXPLANATION ON DEMAND */}
+          {selectiveAiExplanation ? (
+            <div className="p-3 bg-rose-50/70 rounded-xl border border-rose-100 text-xs text-stone-800 leading-relaxed italic font-serif">
+              <span className="font-sans font-bold text-[10px] text-rose-700 block not-italic mb-1 uppercase tracking-wider">
+                Análise de Afinidade Profunda
+              </span>
+              "{selectiveAiExplanation}"
+            </div>
+          ) : (
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-stone-500">Quer saber mais sobre este match?</span>
+              <button
+                type="button"
+                id="btn-request-ai-explanation"
+                onClick={handleRequestAiInsight}
+                disabled={loadingAi}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-700 flex items-center gap-1 cursor-pointer transition"
+              >
+                <Sparkles className="w-3 h-3 text-rose-500" />
+                <span>{loadingAi ? 'Aprofundando...' : 'Explicar com IA'}</span>
+              </button>
+            </div>
+          )}
+
+          {/* ─────────────────────────────────────────────────────────
+              CARD ACTIONS: Passar / Próximo vs Aproximar & Conversar
+              ───────────────────────────────────────────────────────── */}
           <div className="flex items-center gap-2 pt-2">
             <button
               type="button"
               id="btn-next-signal"
               onClick={handleNextSignal}
-              className="flex-1 py-2.5 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium text-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+              className="flex-1 py-3 px-3 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-xl font-medium text-xs transition flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
             >
               <span>Próximo Sinal</span>
               <ArrowRight className="w-3.5 h-3.5" />
@@ -761,251 +842,76 @@ export const Discover: React.FC<DiscoverProps> = ({
               type="button"
               id="btn-initiate-approach"
               onClick={() => handleInitiateApproach(primaryReason)}
-              className="flex-1 py-2.5 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
+              className="flex-1 py-3 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm active:scale-98"
             >
               <MessageCircle className="w-3.5 h-3.5" />
               <span>Aproximar & Conversar</span>
             </button>
           </div>
         </div>
-      </section>
+      </motion.div>
 
       {/* ─────────────────────────────────────────────────────────────
-          SUPERFÍCIE 2: PERGUNTA QUE UNE (2.6, 2.7, 2.8, 2.9: Respostas como entrada de conversa)
+          EXPANDABLE COMMUNITY INSPIRATION (OPTIONAL & DISCREET)
           ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
-        {/* Surface Header */}
-        <div className="px-4 py-3 bg-gradient-to-r from-amber-50/80 via-stone-50 to-white border-b border-stone-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-amber-500 text-white rounded-lg shadow-2xs">
-              <HelpCircle className="w-3.5 h-3.5" />
-            </span>
-            <div>
-              <h2 className="text-xs font-bold text-stone-900 tracking-tight">Pergunta que Une</h2>
-              <span className="text-[10px] text-stone-500">{currentQuestion.countryContext}</span>
-            </div>
-          </div>
+      <div className="border border-stone-200/80 rounded-xl bg-white overflow-hidden shadow-2xs">
+        <button
+          type="button"
+          id="btn-toggle-community-question"
+          onClick={() => setShowCommunityPrompt(!showCommunityPrompt)}
+          className="w-full px-4 py-2.5 flex items-center justify-between text-xs font-semibold text-stone-700 hover:bg-stone-50 transition cursor-pointer"
+        >
+          <span className="flex items-center gap-1.5">
+            <HelpCircle className="w-3.5 h-3.5 text-amber-500" />
+            <span>Pergunta da Lusofonia do Dia: {currentQuestion.theme}</span>
+          </span>
+          <span className="text-[10px] text-rose-600 font-bold">
+            {showCommunityPrompt ? 'Ocultar' : 'Ver & Partilhar'}
+          </span>
+        </button>
 
-          {/* Question Selector Dots */}
-          <div className="flex items-center gap-1">
-            {LUSOFONE_QUESTIONS.map((q, idx) => (
-              <button
-                key={q.id}
-                type="button"
-                onClick={() => setSelectedQuestionIdx(idx)}
-                className={`w-2 h-2 rounded-full transition cursor-pointer ${
-                  selectedQuestionIdx === idx ? 'bg-amber-600 w-4' : 'bg-stone-300'
-                }`}
-                title={q.theme}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* Active Question Prompt */}
-          <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 space-y-1">
-            <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider">{currentQuestion.theme}</span>
-            <p className="text-xs text-stone-900 font-bold leading-relaxed">
+        {showCommunityPrompt && (
+          <div className="p-4 border-t border-stone-100 bg-stone-50/50 space-y-3">
+            <p className="text-xs font-bold text-stone-900 font-serif">
               "{currentQuestion.question}"
             </p>
-          </div>
 
-          {/* User's Own Answer Input / Display (2.7: Persisted in Firestore) */}
-          {savedUserResponse ? (
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/80 flex items-start justify-between gap-2">
-              <div>
-                <span className="text-[10px] font-bold text-stone-500 block">Tua Resposta Partilhada:</span>
-                <p className="text-xs text-stone-900 font-medium mt-0.5">"{savedUserResponse}"</p>
+            {savedUserResponse ? (
+              <div className="p-2.5 bg-white rounded-lg border border-stone-200 text-xs text-stone-800 flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-[10px] font-bold text-stone-500 block">Tua Resposta Partilhada:</span>
+                  <p className="mt-0.5 italic">"{savedUserResponse}"</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSavedUserResponse(null)}
+                  className="text-[10px] text-rose-600 font-bold hover:underline shrink-0 cursor-pointer"
+                >
+                  Editar
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSavedUserResponse(null)}
-                className="text-[10px] text-rose-600 font-semibold hover:underline shrink-0 cursor-pointer"
-              >
-                Editar
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSaveUserResponse} className="flex gap-2">
-              <input
-                type="text"
-                value={userQuestionResponse}
-                onChange={e => setUserQuestionResponse(e.target.value)}
-                placeholder="Partilha a tua resposta com a comunidade..."
-                className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 placeholder-stone-400 focus:bg-white focus:border-amber-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                disabled={!userQuestionResponse.trim() || isSubmittingResponse}
-                className="px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-              >
-                <Send className="w-3 h-3" />
-                <span>{isSubmittingResponse ? 'Gravando...' : 'Unir'}</span>
-              </button>
-            </form>
-          )}
-
-          {/* 2.8 & 2.9: Answers from Community as Direct Conversation Entrypoints */}
-          <div className="space-y-2 pt-1">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-              Respostas de Membros Compatíveis
-            </span>
-
-            <div className="space-y-2">
-              {currentQuestion.sampleAnswers.map((sample, idx) => {
-                const authorCandidate = findCandidateByUid(sample.candidateUid);
-                if (!authorCandidate) return null;
-                const author = authorCandidate.profile;
-                const authorFlag = CPLP_COUNTRIES[author.countryCode]?.flag || '🌍';
-
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 bg-stone-50/80 hover:bg-stone-50 rounded-xl border border-stone-200/70 transition space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={author.profilePhoto}
-                          alt={author.displayName}
-                          className="w-7 h-7 rounded-full object-cover border border-stone-200"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div>
-                          <div className="flex items-center gap-1">
-                            <span className="font-bold text-xs text-stone-900">{author.displayName}</span>
-                            <span className="text-xs">{authorFlag}</span>
-                          </div>
-                          <span className="text-[10px] text-stone-500">{author.cityName} · {sample.timeAgo}</span>
-                        </div>
-                      </div>
-
-                      <span className="text-[9px] bg-white text-stone-600 px-2 py-0.5 rounded-full border border-stone-200">
-                        {sample.highlight}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-stone-800 leading-relaxed font-serif italic pl-1">
-                      "{sample.answer}"
-                    </p>
-
-                    {/* 2.9: Direct entry into conversation from answer */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleInitiateApproach(`Tua resposta à pergunta sobre ${currentQuestion.theme}: "${sample.answer}"`);
-                      }}
-                      className="w-full py-1.5 bg-white hover:bg-rose-50 text-rose-700 border border-rose-200/80 rounded-lg text-[11px] font-semibold transition flex items-center justify-center gap-1 cursor-pointer"
-                    >
-                      <MessageCircle className="w-3 h-3" />
-                      <span>Conversar com {author.displayName} sobre esta resposta</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+            ) : (
+              <form onSubmit={handleSaveUserResponse} className="flex gap-2">
+                <input
+                  type="text"
+                  value={userQuestionResponse}
+                  onChange={e => setUserQuestionResponse(e.target.value)}
+                  placeholder="Partilha a tua resposta..."
+                  className="flex-1 px-3 py-1.5 bg-white border border-stone-200 rounded-lg text-xs text-stone-900 placeholder-stone-400 focus:outline-none focus:border-amber-500"
+                />
+                <button
+                  type="submit"
+                  disabled={!userQuestionResponse.trim() || isSubmittingResponse}
+                  className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 disabled:opacity-40 transition cursor-pointer"
+                >
+                  Partilhar
+                </button>
+              </form>
+            )}
           </div>
-        </div>
-      </section>
-
-      {/* ─────────────────────────────────────────────────────────────
-          SUPERFÍCIE 3: O QUE ESTÁ A ACONTECER (2.10: Agregação leve de sinais vivos)
-          Conversas relevantes + Possibilidades próximas + Pontes CPLP
-          ───────────────────────────────────────────────────────────── */}
-      <section className="bg-white rounded-2xl border border-stone-200/90 shadow-xs overflow-hidden">
-        {/* Surface Header */}
-        <div className="px-4 py-3 bg-gradient-to-r from-emerald-50/80 via-stone-50 to-white border-b border-stone-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 bg-emerald-600 text-white rounded-lg shadow-2xs">
-              <Activity className="w-3.5 h-3.5" />
-            </span>
-            <div>
-              <h2 className="text-xs font-bold text-stone-900 tracking-tight">O que está a acontecer</h2>
-              <span className="text-[10px] text-stone-500">Pulso ao vivo nos 9 países da CPLP</span>
-            </div>
-          </div>
-
-          <span className="text-[10px] text-emerald-700 font-bold flex items-center gap-1">
-            <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
-            <span>Em Direto</span>
-          </span>
-        </div>
-
-        <div className="p-4 space-y-4">
-          {/* Live Activity Telemetry Badges */}
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex flex-col justify-between">
-              <span className="text-[10px] text-stone-500 flex items-center gap-1">
-                <Globe className="w-3 h-3 text-rose-500" />
-                <span>Pontes CPLP Vivas</span>
-              </span>
-              <span className="font-bold text-stone-900 mt-1">Luanda ↔ Lisboa ↔ Salvador</span>
-            </div>
-            <div className="p-2.5 bg-stone-50 rounded-xl border border-stone-100 flex flex-col justify-between">
-              <span className="text-[10px] text-stone-500 flex items-center gap-1">
-                <Clock className="w-3 h-3 text-amber-500" />
-                <span>Tema do Momento</span>
-              </span>
-              <span className="font-bold text-stone-900 mt-1">Música & Literatura Lusófona</span>
-            </div>
-          </div>
-
-          {/* Members Active Right Now (2.10: Possibilidades próximas) */}
-          <div className="space-y-2">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider block">
-              Membros Ativos com Afinidade Aberta
-            </span>
-
-            <div className="divide-y divide-stone-100 border border-stone-100 rounded-xl overflow-hidden">
-              {candidates.slice(0, 4).map((c, idx) => {
-                const prof = c.profile;
-                const flag = CPLP_COUNTRIES[prof.countryCode]?.flag || '🌍';
-
-                return (
-                  <div
-                    key={prof.uid || idx}
-                    className="p-2.5 bg-white hover:bg-stone-50 transition flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="relative shrink-0">
-                        <img
-                          src={prof.profilePhoto}
-                          alt={prof.displayName}
-                          className="w-9 h-9 rounded-full object-cover border border-stone-200"
-                          referrerPolicy="no-referrer"
-                        />
-                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-xs text-stone-900 truncate">{prof.displayName}</span>
-                          <span className="text-xs">{flag}</span>
-                        </div>
-                        <p className="text-[10px] text-stone-500 truncate">
-                          {prof.cityName} · {c.compatibilityReasons[0] || 'Conexão ativa'}
-                        </p>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleInitiateApproach(`Vi que estás ativo(a) em ${prof.cityName} e gostei da nossa afinidade.`);
-                      }}
-                      className="px-2.5 py-1.5 bg-stone-100 hover:bg-rose-50 text-stone-800 hover:text-rose-700 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      <MessageCircle className="w-3 h-3" />
-                      <span>Conectar</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      </section>
+        )}
+      </div>
     </div>
   );
 };
+
