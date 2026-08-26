@@ -595,7 +595,6 @@ export class HumanConnectionGraph {
     const metrics = this.calculateMCRMetrics({ timeframe });
     return metrics.byOrigin || {};
   }
-  }
 
   /**
    * Enrich candidate with Graph Synergies & Serendipity Insights
