@@ -239,7 +239,7 @@ export default function App() {
   };
 
   // 2.1 & 2.5: User Interactions delegated directly to DiscoveryAppService
-  const handleLike = async (targetCandidate: DiscoveryCandidate) => {
+  const handleLike = async (targetCandidate: DiscoveryCandidate, customContextText?: string, openChat: boolean = false) => {
     if (!profile || !uid) return;
 
     const discoveryService = DiscoveryAppService.getInstance();
@@ -262,7 +262,12 @@ export default function App() {
           try { localStorage.setItem('enos_messages', JSON.stringify(updated)); } catch {}
           return updated;
         });
-      }
+
+        if (openChat) {
+          setCurrentTab('conversations');
+        }
+      },
+      customContextText
     );
 
     setSignals(result.updatedSignals);
@@ -590,7 +595,7 @@ export default function App() {
             }`}
           >
             <Compass className="w-5 h-5" />
-            <span className="text-[10px] tracking-wider uppercase">Descobrir</span>
+            <span className="text-[10px] tracking-wider uppercase">O teu Agora</span>
           </button>
 
           <button

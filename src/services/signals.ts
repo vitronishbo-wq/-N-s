@@ -149,6 +149,8 @@ export function getInitialSignals(uid: string): InteractionSignals {
         likedCountries: parsed.likedCountries || {},
         skippedCountries: parsed.skippedCountries || {},
         likedInterests: parsed.likedInterests || {},
+        likedReasonTypes: parsed.likedReasonTypes || {},
+        conversationReasonTypes: parsed.conversationReasonTypes || {},
         conversationStarts: parsed.conversationStarts || 0,
         meaningfulInteractions: parsed.meaningfulInteractions || 0,
         totalLikesGiven: parsed.totalLikesGiven || 0,
@@ -177,6 +179,8 @@ export function getInitialSignals(uid: string): InteractionSignals {
     likedCountries: {},
     skippedCountries: {},
     likedInterests: {},
+    likedReasonTypes: {},
+    conversationReasonTypes: {},
     conversationStarts: 0,
     meaningfulInteractions: 0,
     totalLikesGiven: 0,
@@ -204,13 +208,13 @@ export type SignalEvent =
   | { type: 'firstCandidateShown'; targetUid: string }
   | { type: 'candidate_shown'; targetUid: string }
   | { type: 'seen'; targetUid: string }
-  | { type: 'like'; targetUid: string; countryCode?: CPLPCountryCode | string; interests?: string[] }
-  | { type: 'pass'; targetUid: string; countryCode?: CPLPCountryCode | string }
+  | { type: 'like'; targetUid: string; countryCode?: CPLPCountryCode | string; interests?: string[]; discoveryMode?: string }
+  | { type: 'pass'; targetUid: string; countryCode?: CPLPCountryCode | string; discoveryMode?: string }
   | { type: 'firstMatch'; targetUid: string }
   | { type: 'match'; targetUid: string }
-  | { type: 'firstConversation'; conversationId: string }
-  | { type: 'conversation_start'; conversationId: string }
-  | { type: 'meaningfulInteraction'; conversationId: string }
+  | { type: 'firstConversation'; conversationId: string; discoveryMode?: string }
+  | { type: 'conversation_start'; conversationId: string; discoveryMode?: string }
+  | { type: 'meaningfulInteraction'; conversationId: string; discoveryMode?: string }
   | { type: 'block'; targetUid: string }
   | { type: 'report'; targetUid: string };
 
@@ -228,7 +232,9 @@ export function recordSignalEvent(
     recentlySeenTimestamps: { ...signals.recentlySeenTimestamps },
     likedCountries: { ...signals.likedCountries },
     skippedCountries: { ...signals.skippedCountries },
-    likedInterests: { ...signals.likedInterests }
+    likedInterests: { ...signals.likedInterests },
+    likedReasonTypes: { ...(signals.likedReasonTypes || {}) },
+    conversationReasonTypes: { ...(signals.conversationReasonTypes || {}) }
   };
 
   switch (event.type) {
@@ -254,6 +260,10 @@ export function recordSignalEvent(
       }
       if (event.countryCode) {
         updated.likedCountries[event.countryCode] = (updated.likedCountries[event.countryCode] || 0) + 1;
+      }
+      if (event.discoveryMode) {
+        if (!updated.likedReasonTypes) updated.likedReasonTypes = {};
+        updated.likedReasonTypes[event.discoveryMode] = (updated.likedReasonTypes[event.discoveryMode] || 0) + 1;
       }
       if (event.interests && Array.isArray(event.interests)) {
         event.interests.forEach(interest => {
@@ -292,6 +302,10 @@ export function recordSignalEvent(
         updated.firstConversationAt = now;
       }
       updated.conversationStarts += 1;
+      if (event.discoveryMode) {
+        if (!updated.conversationReasonTypes) updated.conversationReasonTypes = {};
+        updated.conversationReasonTypes[event.discoveryMode] = (updated.conversationReasonTypes[event.discoveryMode] || 0) + 1;
+      }
       if (!updated.isActivated) {
         updated.isActivated = true;
         updated.activatedAt = now;
@@ -303,6 +317,10 @@ export function recordSignalEvent(
 
     case 'meaningfulInteraction':
       updated.meaningfulInteractions += 1;
+      if (event.discoveryMode) {
+        if (!updated.conversationReasonTypes) updated.conversationReasonTypes = {};
+        updated.conversationReasonTypes[event.discoveryMode] = (updated.conversationReasonTypes[event.discoveryMode] || 0) + 1;
+      }
       if (!updated.isActivated) {
         updated.isActivated = true;
         updated.activatedAt = now;

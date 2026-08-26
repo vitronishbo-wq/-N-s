@@ -11,7 +11,12 @@ import {
   CompatibilityResult,
   RelationshipIntent,
   Conversation,
-  ChatMessage
+  ChatMessage,
+  ContextualPrioritizationScore,
+  DiscoveryMode,
+  DiscoveryEvidenceItem,
+  DiscoveryEvidenceType,
+  DiscoveryCandidateEvidence
 } from '../types';
 import { CandidateDiversityGuard, defaultDiversityGuard } from './diversityGuard';
 import { DiscoveryExpansionPolicy, defaultExpansionPolicy } from './expansionPolicy';
@@ -408,13 +413,14 @@ export class DiscoveryEngine implements IDiscoveryEngine {
     };
   }
 
-  // 5. Safe DiscoveryCandidate Projection
+  // 5. Safe DiscoveryCandidate Projection with Evidence Deconstruction (3.1, 3.2, 3.3)
   public buildDiscoveryCandidate(
     candidate: UserProfile,
     compatibility: ReturnType<IDiscoveryEngine['calculateCompatibility']>,
     contextResult: ReturnType<IDiscoveryEngine['calculateContext']>,
     noveltyBonus: number = 0,
-    expansionLevel?: ExpansionLevel
+    expansionLevel?: ExpansionLevel,
+    myProfile?: UserProfile
   ): DiscoveryCandidate {
     const totalScore = Math.min(
       Math.max(
@@ -426,6 +432,161 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       ),
       99
     );
+
+    // 3.2 & 3.3: Extract concrete real-profile evidence
+    const myInterests = myProfile?.interests || [];
+    const candidateInterests = candidate.interests || [];
+    const sharedInterests = candidateInterests.filter(i => myInterests.includes(i));
+    const differentInterests = candidateInterests.filter(i => !myInterests.includes(i));
+    const isCrossCountry = myProfile && myProfile.countryCode !== candidate.countryCode;
+    const isSameCity = myProfile && myProfile.cityName === candidate.cityName;
+
+    const intentMatch = myProfile && myProfile.intent === candidate.intent
+      ? 'Intenções sincronizadas (' + (candidate.intent === 'serious' ? 'Relacionamento Sério' : candidate.intent === 'dating' ? 'Encontros' : 'Conexão Autêntica') + ')'
+      : 'Intenções complementares e abertas à convivência genuína';
+
+    const culturalBridge = isSameCity
+      ? `Partilham a mesma vivência local em ${candidate.cityName}`
+      : isCrossCountry
+        ? `Ponte lusófona transatlântica viva entre ${myProfile?.cityName || 'Lusofonia'} e ${candidate.cityName}`
+        : `Partilham a mesma vivência nacional em ${candidate.cityName}`;
+
+    const personalityHighlight = candidate.bio && candidate.bio.trim().length > 0
+      ? `"${candidate.bio.slice(0, 90)}${candidate.bio.length > 90 ? '...' : ''}"`
+      : 'Presença tranquila focada em partilha e valores partilhados.';
+
+    // Generate grounded conversation starters
+    const conversationStarters: string[] = [];
+    if (sharedInterests.length > 0) {
+      conversationStarters.push(`Fiquei curioso(a) com a tua afinidade com ${sharedInterests.slice(0, 2).join(' e ')}.`);
+    }
+    if (candidate.cityName) {
+      conversationStarters.push(`Como é o teu dia a dia e vivência em ${candidate.cityName}?`);
+    }
+    if (differentInterests.length > 0) {
+      conversationStarters.push(`Adoraria saber mais sobre o teu interesse por ${differentInterests[0]}.`);
+    }
+    if (conversationStarters.length === 0) {
+      conversationStarters.push(`Olá! Notei a nossa sintonia em valores e vivências na Lusofonia.`);
+    }
+
+    // 3.3: Construct Structured Evidence Items across 5 Dimensions
+    const structuredEvidence: DiscoveryEvidenceItem[] = [];
+
+    // 1. Similarity (Afinidade em Interesses & Intenção)
+    if (sharedInterests.length > 0 || (myProfile && myProfile.intent === candidate.intent)) {
+      structuredEvidence.push({
+        type: 'SIMILARITY',
+        title: 'Afinidade & Intenção',
+        description: sharedInterests.length > 0
+          ? `Partilham afinidade concreta por ${sharedInterests.slice(0, 3).join(', ')}.`
+          : `Sintonia em busca de ${candidate.intent === 'serious' ? 'relacionamento duradouro' : 'conexões autênticas'}.`,
+        weight: Math.min(1.0, (sharedInterests.length * 0.3) + (myProfile?.intent === candidate.intent ? 0.4 : 0.1)),
+        highlight: sharedInterests[0] || 'Intenção Alinhada'
+      });
+    }
+
+    // 2. Complementarity (Diferenças Enriquecedoras)
+    if (differentInterests.length > 0) {
+      structuredEvidence.push({
+        type: 'COMPLEMENTARITY',
+        title: 'Diferenças Enriquecedoras',
+        description: `Perspetivas que somam: ${differentInterests.slice(0, 2).join(' e ')} trazem novos horizontes ao diálogo.`,
+        weight: Math.min(1.0, 0.4 + (differentInterests.length * 0.15)),
+        highlight: differentInterests[0]
+      });
+    }
+
+    // 3. Cultural Connection (Ponte Cultural Lusófona)
+    structuredEvidence.push({
+      type: 'CULTURAL_CONNECTION',
+      title: 'Ponte Cultural Lusófona',
+      description: culturalBridge,
+      weight: isCrossCountry ? 0.9 : isSameCity ? 0.85 : 0.75,
+      highlight: `${candidate.cityName}, ${candidate.countryName}`
+    });
+
+    // 4. Serendipity (Descoberta Inesperada & Valor Serendípico)
+    const serendipityWeight = (isCrossCountry ? 0.45 : 0.2) + (noveltyBonus > 0 ? 0.3 : 0.1) + (candidate.online ? 0.25 : 0.1);
+    structuredEvidence.push({
+      type: 'SERENDIPITY',
+      title: 'Descoberta Inesperada',
+      description: isCrossCountry
+        ? `Encontro serendípico transfronteiriço com elevado potencial de partilha e novas descobertas.`
+        : `Possibilidade espontânea de descoberta com horizonte aberto em ${candidate.cityName}.`,
+      weight: Math.min(1.0, serendipityWeight),
+      highlight: isCrossCountry ? 'Ponte CPLP' : 'Pulso Local'
+    });
+
+    // 5. Conversation Potential (Potencial de Conversa)
+    const conversationWeight = Math.min(
+      1.0,
+      0.35 +
+      (candidate.bio && candidate.bio.length > 20 ? 0.3 : 0.1) +
+      (sharedInterests.length > 0 ? 0.25 : 0.1) +
+      (candidate.online ? 0.1 : 0)
+    );
+    structuredEvidence.push({
+      type: 'CONVERSATION_POTENTIAL',
+      title: 'Potencial Conversacional',
+      description: conversationStarters[0] || 'Prontidão para um primeiro diálogo acolhedor e substancial.',
+      weight: conversationWeight,
+      highlight: candidate.online ? 'Disponível Agora' : 'Voz & Expressão'
+    });
+
+    // 3.1: Determine dominant discovery mode
+    let discoveryMode: DiscoveryMode = 'SIMILARITY';
+    if (isCrossCountry && (compatibility.compatibilityResult.crossCulturalHighlight || serendipityWeight > 0.7)) {
+      discoveryMode = 'CULTURAL_BRIDGE';
+    } else if (differentInterests.length >= 2 && (!myProfile || myProfile.intent !== candidate.intent)) {
+      discoveryMode = 'COMPLEMENTARITY';
+    } else if (serendipityWeight > 0.75 || noveltyBonus > 0) {
+      discoveryMode = 'SERENDIPITY';
+    } else if (candidate.bio && candidate.bio.length > 40 && conversationWeight > 0.7) {
+      discoveryMode = 'DEEP_CONVERSATION';
+    } else {
+      discoveryMode = 'SIMILARITY';
+    }
+
+    // 3.1 & 3.2: Evidence-grounded primary discovery reason
+    let discoveryReason: string;
+    switch (discoveryMode) {
+      case 'CULTURAL_BRIDGE':
+        discoveryReason = culturalBridge + (sharedInterests.length > 0 ? ` e afinidade em ${sharedInterests[0]}` : '');
+        break;
+      case 'COMPLEMENTARITY':
+        discoveryReason = `Diferenças enriquecedoras: vivências distintas em ${candidate.cityName} que expandem a perspetiva mútua`;
+        break;
+      case 'SERENDIPITY':
+        discoveryReason = `Uma conexão serendípica com alto valor de descoberta entre ${myProfile?.cityName || 'Lusofonia'} e ${candidate.cityName}`;
+        break;
+      case 'DEEP_CONVERSATION':
+        discoveryReason = `Expressão genuína e valores transparentes com prontidão para diálogo com substância`;
+        break;
+      case 'SIMILARITY':
+      default:
+        discoveryReason = sharedInterests.length > 0
+          ? `Sintonia viva em ${sharedInterests.slice(0, 2).join(' e ')} com alinhamento de intenções`
+          : compatibility.reasons[0] || `Sintonia autêntica em ${candidate.cityName}`;
+        break;
+    }
+
+    const connectionContext = `${candidate.cityName}, ${candidate.countryName} · ${
+      sharedInterests.length > 0 ? sharedInterests.slice(0, 2).join(' + ') : 'Valores Lusófonos'
+    }`;
+
+    const conversationPrompt = conversationStarters[0];
+
+    const evidenceDetails: DiscoveryCandidateEvidence = {
+      sharedInterests,
+      intentMatch,
+      culturalBridge,
+      personalityHighlight,
+      relevantDifferences: differentInterests.slice(0, 3),
+      conversationStarters,
+      contextScore: contextResult.contextScore,
+      items: structuredEvidence
+    };
 
     return {
       profile: candidate,
@@ -440,7 +601,13 @@ export class DiscoveryEngine implements IDiscoveryEngine {
         ...compatibility.compatibilityResult,
         score: totalScore
       },
-      crossCulturalHighlight: compatibility.compatibilityResult.crossCulturalHighlight
+      crossCulturalHighlight: compatibility.compatibilityResult.crossCulturalHighlight,
+      discoveryReason,
+      evidence: structuredEvidence,
+      connectionContext,
+      conversationPrompt,
+      discoveryMode,
+      evidenceDetails
     };
   }
 
@@ -454,9 +621,85 @@ export class DiscoveryEngine implements IDiscoveryEngine {
     return this.diversityGuard.interleaveFeed(balanced);
   }
 
-  // 7. Rank Candidates
-  public rankCandidates(candidates: DiscoveryCandidate[]): DiscoveryCandidate[] {
-    return [...candidates].sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+  // 7. Rank Candidates: Prioritizes Reason-first heuristic (Conversation Potential + Cultural Connection > basic profile similarity)
+  public rankCandidates(
+    candidates: DiscoveryCandidate[],
+    myProfile?: UserProfile,
+    signals?: InteractionSignals
+  ): DiscoveryCandidate[] {
+    return [...candidates].map(c => {
+      const p = c.profile;
+
+      // 1. Basic Profile Similarity (Subordinated to 0.14 weight)
+      const relevance = c.deterministicScore / 100;
+
+      // 2. Conversation Potential (High-priority reason signal: 0.38 weight)
+      const bioLength = p.bio ? p.bio.trim().length : 0;
+      const bioDepthBonus = bioLength > 70 ? 0.35 : bioLength > 25 ? 0.25 : 0.10;
+      const startersBonus = (c.evidenceDetails?.conversationStarters?.length || 0) > 0 ? 0.25 : 0.05;
+      const onlineBonus = p.online ? 0.20 : (p.lastActive && (Date.now() - p.lastActive < 3600000 * 24)) ? 0.10 : 0;
+      const deepModeBonus = c.discoveryMode === 'DEEP_CONVERSATION' ? 0.20 : 0;
+      const conversationPotential = Math.min(
+        1.0,
+        0.20 + bioDepthBonus + startersBonus + onlineBonus + deepModeBonus
+      );
+
+      // 3. Cultural Connection (High-priority reason signal: 0.32 weight)
+      const isCross = myProfile && myProfile.countryCode !== p.countryCode;
+      const isSameCity = myProfile && myProfile.cityName === p.cityName;
+      const culturalEvidenceWeight = c.evidence?.find(e => e.type === 'CULTURAL_CONNECTION')?.weight || 0.7;
+      const bridgeModeBonus = c.discoveryMode === 'CULTURAL_BRIDGE' ? 0.15 : 0;
+      const baseCulturalSynergy = isCross ? 0.85 : isSameCity ? 0.80 : 0.70;
+      const culturalConnection = Math.min(
+        1.0,
+        baseCulturalSynergy * 0.6 + culturalEvidenceWeight * 0.3 + bridgeModeBonus
+      );
+
+      // 4. Surprise & Serendipity (0.10 weight)
+      const surprise = isCross ? 0.85 : (c.noveltyBonus > 0 || c.discoveryMode === 'SERENDIPITY' ? 0.80 : 0.45);
+
+      // 5. Diversity (0.06 weight: Prevents over-representation of same region)
+      const countrySeenCount = signals?.likedCountries?.[p.countryCode] || 0;
+      const diversity = Math.max(0.2, 1 - Math.min(countrySeenCount * 0.1, 0.8));
+
+      // 6. Recency (Active status / freshness)
+      const recency = p.online ? 1.0 : (p.lastActive && (Date.now() - p.lastActive < 3600000 * 24)) ? 0.7 : 0.4;
+
+      // 7. Signal Learning Bonus (Learn which reason types convert to interactions)
+      const modeLikes = signals?.likedReasonTypes?.[c.discoveryMode] || 0;
+      const modeConvs = signals?.conversationReasonTypes?.[c.discoveryMode] || 0;
+      const signalLearningBonus = Math.min(0.15, (modeLikes * 0.02) + (modeConvs * 0.04));
+
+      // Weighted Heuristic:
+      // Conversation Potential (0.38) + Cultural Connection (0.32) = 0.70 (70% Reason-First)
+      // Basic Profile Similarity (0.14) + Surprise (0.10) + Diversity (0.06) = 0.30
+      const finalCompositeRank =
+        conversationPotential * 0.38 +
+        culturalConnection * 0.32 +
+        relevance * 0.14 +
+        surprise * 0.10 +
+        diversity * 0.06 +
+        signalLearningBonus;
+
+      const prioritizationScore: ContextualPrioritizationScore = {
+        relevance,
+        conversationPotential,
+        culturalConnection,
+        surprise,
+        diversity,
+        recency,
+        finalCompositeRank
+      };
+
+      return {
+        ...c,
+        prioritizationScore
+      };
+    }).sort((a, b) => {
+      const rankA = a.prioritizationScore?.finalCompositeRank ?? (a.compatibilityScore / 100);
+      const rankB = b.prioritizationScore?.finalCompositeRank ?? (b.compatibilityScore / 100);
+      return rankB - rankA;
+    });
   }
 
   // Complete Pipeline Execution
@@ -478,11 +721,11 @@ export class DiscoveryEngine implements IDiscoveryEngine {
     const rawCandidates: DiscoveryCandidate[] = eligible.map(candidate => {
       const compat = this.calculateCompatibility(candidate, myProfile, myPrefs, context, customWeights);
       const ctx = this.calculateContext(candidate, signals, customWeights);
-      return this.buildDiscoveryCandidate(candidate, compat, ctx, 0, context?.currentExpansionLevel);
+      return this.buildDiscoveryCandidate(candidate, compat, ctx, 0, context?.currentExpansionLevel, myProfile);
     });
 
     const diversified = this.diversifyCandidates(rawCandidates, myProfile, myPrefs);
-    return this.rankCandidates(diversified);
+    return this.rankCandidates(diversified, myProfile, signals);
   }
 
   // Generate complete feed with progressive expansion and availability state
@@ -631,6 +874,19 @@ export class DiscoveryAppService {
     }
   }
 
+  /**
+   * Prioritize 'Reason-first' candidate ranking by applying a weighted heuristic
+   * that heavily favors 'Conversation Potential' (0.38) and 'Cultural Connection' (0.32)
+   * signals over basic profile similarity (0.14).
+   */
+  public rankCandidatesReasonFirst(
+    candidates: DiscoveryCandidate[],
+    myProfile: UserProfile,
+    signals?: InteractionSignals
+  ): DiscoveryCandidate[] {
+    return defaultDiscoveryEngine.rankCandidates(candidates, myProfile, signals);
+  }
+
   public evaluateDiscoveryFeed(
     pool: UserProfile[],
     myProfile: UserProfile,
@@ -655,11 +911,18 @@ export class DiscoveryAppService {
       }
     );
 
+    // Apply Reason-First Prioritization Ranking (favors Conversation Potential & Cultural Connection)
+    const rankedCandidates = this.rankCandidatesReasonFirst(
+      feedResult.candidates,
+      myProfile,
+      signals
+    );
+
     // Light-First single/next thumbnail preload
-    this.preloadCandidateMedia(feedResult.candidates);
+    this.preloadCandidateMedia(rankedCandidates);
 
     return {
-      candidates: feedResult.candidates,
+      candidates: rankedCandidates,
       currentIndex: 0,
       isLoading: false,
       availability: feedResult.availability,
@@ -673,7 +936,8 @@ export class DiscoveryAppService {
     targetCandidate: DiscoveryCandidate,
     myProfile: UserProfile,
     signals: InteractionSignals,
-    onSuccessConversation?: (convo: Conversation, initialMsg: ChatMessage) => void
+    onSuccessConversation?: (convo: Conversation, initialMsg: ChatMessage) => void,
+    customContextText?: string
   ): Promise<{ updatedSignals: InteractionSignals; conversation?: Conversation }> {
     const target = targetCandidate.profile;
     this.markSeenInSession(target.uid);
@@ -694,6 +958,9 @@ export class DiscoveryAppService {
     }
 
     const convoId = `convo_${[myProfile.uid, target.uid].sort().join('_')}`;
+    const defaultReason = targetCandidate.compatibilityReasons?.[0] || `Sintonia Lusófona (${targetCandidate.compatibilityScore}%)`;
+    const initialText = customContextText || `Olá, ${myProfile.displayName}! Adorei a nossa conexão sobre "${defaultReason}". Vamos conversar? 🌍✨`;
+
     const newConvo: Conversation = {
       id: convoId,
       participantUids: [myProfile.uid, target.uid],
@@ -711,7 +978,7 @@ export class DiscoveryAppService {
           countryCode: target.countryCode
         }
       },
-      lastMessageText: `Sintonia Lusófona (${targetCandidate.compatibilityScore}%)`,
+      lastMessageText: defaultReason,
       lastMessageTimestamp: Date.now(),
       createdAt: Date.now(),
       updatedAt: Date.now()
@@ -721,7 +988,7 @@ export class DiscoveryAppService {
       id: 'msg_welcome_' + Date.now(),
       conversationId: convoId,
       senderId: target.uid,
-      text: `Olá, ${myProfile.displayName}! Adorei ver nossa sintonia com ${target.cityName}. Vamos conversar? 🌍✨`,
+      text: initialText,
       createdAt: Date.now(),
       status: 'delivered'
     };

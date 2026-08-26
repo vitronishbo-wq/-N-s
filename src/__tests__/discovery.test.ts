@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runDiscoveryPipeline, filterEligibleCandidates } from '../services/matching';
+import { runDiscoveryPipeline, filterEligibleCandidates, DiscoveryAppService } from '../services/discoveryService';
 import { UserProfile, UserPreferences, PrivacySettings, InteractionSignals } from '../types';
 
 describe('Discovery Pipeline & Eligibility Engine (4.4 & 4.11 & 4.27 & 4.29)', () => {
@@ -193,6 +193,13 @@ describe('Discovery Pipeline & Eligibility Engine (4.4 & 4.11 & 4.27 & 4.29)', (
     expect(candidates[0].compatibilityScore).toBeGreaterThanOrEqual(70);
     expect(candidates[0].compatibilityReasons.length).toBeGreaterThan(0);
     expect(candidates[0].compatibilityResult.intentAlignment).toBe('exact');
+    expect(candidates[0].discoveryReason).toBeDefined();
+    expect(candidates[0].discoveryMode).toBeDefined();
+    expect(candidates[0].connectionContext).toBeDefined();
+    expect(candidates[0].conversationPrompt).toBeDefined();
+    expect(Array.isArray(candidates[0].evidence)).toBe(true);
+    expect(candidates[0].evidence.length).toBeGreaterThan(0);
+    expect(candidates[0].evidenceDetails?.sharedInterests).toContain('Música Lusófona');
   });
 
   it('should filter out candidates when Preferences disables crossCultural', () => {
@@ -256,5 +263,94 @@ describe('Discovery Pipeline & Eligibility Engine (4.4 & 4.11 & 4.27 & 4.29)', (
 
     // user_valid_1 already liked -> 0 eligible
     expect(eligible.length).toBe(0);
+  });
+
+  it('should prioritize Reason-first ranking (favoring Conversation Potential and Cultural Connection over basic profile similarity)', () => {
+    const discoveryAppService = DiscoveryAppService.getInstance();
+
+    const candidateRichBioCrossCountry: UserProfile = {
+      uid: 'user_rich_bio_cross',
+      displayName: 'Inês do Mindelo',
+      age: 28,
+      gender: 'woman',
+      intent: 'serious',
+      interests: ['Gastronomia'], // Only 1 interest, but expressive bio and cross-cultural bridge
+      bio: 'Apaixonada por mornas cabo-verdianas, conversas ao luar sobre literatura e partilhas que constroem amizades duradouras.',
+      profilePhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500',
+      countryCode: 'CV',
+      countryName: 'Cabo Verde',
+      cityName: 'Mindelo',
+      verificationStatus: 'verified',
+      visibility: 'public',
+      online: true,
+      lastActive: Date.now(),
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const candidateManyInterestsNoBio: UserProfile = {
+      uid: 'user_many_interests_no_bio',
+      displayName: 'Joana Local',
+      age: 29,
+      gender: 'woman',
+      intent: 'serious',
+      interests: ['Música Lusófona', 'Literatura', 'Gastronomia', 'Cinema'], // 4 matching interests (high similarity)
+      bio: '', // Empty bio -> low conversation potential
+      profilePhoto: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500',
+      countryCode: 'BR',
+      countryName: 'Brasil',
+      cityName: 'Salvador',
+      verificationStatus: 'verified',
+      visibility: 'public',
+      online: false,
+      lastActive: Date.now() - 3600000 * 48,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    const testPool = [candidateManyInterestsNoBio, candidateRichBioCrossCountry];
+    const testPreferences: UserPreferences = {
+      ...myPreferences,
+      countries: ['BR', 'CV']
+    };
+
+    const cleanSignals: InteractionSignals = {
+      uid: 'me_123',
+      seenCandidateUids: [],
+      recentlySeenTimestamps: {},
+      likedCandidateUids: [],
+      passedCandidateUids: [],
+      blockedUids: [],
+      reportedUids: [],
+      likedCountries: {},
+      skippedCountries: {},
+      likedInterests: {},
+      conversationStarts: 0,
+      meaningfulInteractions: 0,
+      totalLikesGiven: 0,
+      totalPassesGiven: 0,
+      isActivated: false,
+      lastActiveTimestamp: Date.now()
+    };
+
+    const feedState = discoveryAppService.evaluateDiscoveryFeed(
+      testPool,
+      myProfile,
+      testPreferences,
+      privacy,
+      cleanSignals
+    );
+
+    expect(feedState.candidates.length).toBe(2);
+
+    // Verify Reason-first: candidate with rich bio and cross-cultural connection is ranked first
+    const topCandidate = feedState.candidates[0];
+    expect(topCandidate.profile.uid).toBe('user_rich_bio_cross');
+    expect(topCandidate.prioritizationScore).toBeDefined();
+    expect(topCandidate.prioritizationScore?.conversationPotential).toBeGreaterThan(0.6);
+    expect(topCandidate.prioritizationScore?.culturalConnection).toBeGreaterThan(0.7);
+    expect(topCandidate.prioritizationScore?.finalCompositeRank).toBeGreaterThan(
+      feedState.candidates[1].prioritizationScore?.finalCompositeRank || 0
+    );
   });
 });

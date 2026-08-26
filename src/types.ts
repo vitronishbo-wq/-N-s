@@ -382,6 +382,8 @@ export interface InteractionSignals {
   likedCountries: Record<CPLPCountryCode | string, number>;
   skippedCountries: Record<CPLPCountryCode | string, number>;
   likedInterests: Record<string, number>;
+  likedReasonTypes?: Record<string, number>;
+  conversationReasonTypes?: Record<string, number>;
   conversationStarts: number;
   meaningfulInteractions: number;
   totalLikesGiven: number;
@@ -409,7 +411,51 @@ export interface CompatibilityResult {
   crossCulturalHighlight?: string;
 }
 
+// 3.1, 3.3: Discovery Modes & Evidence Types (Human Connection Graph)
+export type DiscoveryMode =
+  | 'SIMILARITY'
+  | 'COMPLEMENTARITY'
+  | 'SERENDIPITY'
+  | 'CULTURAL_BRIDGE'
+  | 'DEEP_CONVERSATION';
+
+export type DiscoveryEvidenceType =
+  | 'SIMILARITY'
+  | 'COMPLEMENTARITY'
+  | 'SERENDIPITY'
+  | 'CULTURAL_CONNECTION'
+  | 'CONVERSATION_POTENTIAL';
+
+export interface DiscoveryEvidenceItem {
+  type: DiscoveryEvidenceType;
+  title: string;
+  description: string;
+  weight: number;
+  highlight?: string;
+}
+
 // 4.2: Discovery Candidate Presentation Safe Projection / DTO
+export interface DiscoveryCandidateEvidence {
+  sharedInterests: string[];
+  intentMatch: string;
+  culturalBridge: string;
+  personalityHighlight?: string;
+  relevantDifferences?: string[];
+  conversationStarters: string[];
+  contextScore: number;
+  items?: DiscoveryEvidenceItem[];
+}
+
+export interface ContextualPrioritizationScore {
+  relevance: number;             // basic profile similarity (lower weight)
+  conversationPotential: number; // probability to ignite meaningful dialog (high weight)
+  culturalConnection: number;    // cross-cultural bridge & lusophone synergy (high weight)
+  surprise: number;              // novelty & unique complementary attributes
+  diversity: number;             // cross-cultural and regional diversity
+  recency: number;               // active status and freshness
+  finalCompositeRank: number;
+}
+
 export interface DiscoveryCandidate {
   profile: UserProfile;
   compatibilityScore: number;
@@ -423,6 +469,15 @@ export interface DiscoveryCandidate {
   crossCulturalHighlight?: string;
   aiExplanation?: string;
   isAiEnhanced?: boolean;
+
+  // 3.1 & 3.3: Human Connection Graph & Structured Evidence
+  discoveryReason: string;
+  evidence: DiscoveryEvidenceItem[];
+  connectionContext: string;
+  conversationPrompt: string;
+  discoveryMode: DiscoveryMode;
+  evidenceDetails?: DiscoveryCandidateEvidence;
+  prioritizationScore?: ContextualPrioritizationScore;
 }
 
 // 4.22 & 4.23: Discovery Availability Status

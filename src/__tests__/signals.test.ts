@@ -36,9 +36,32 @@ describe('Interaction Signals & Activation Metrics (4.12 & 4.13 & 4.14 & 4.15 & 
     expect(signals.firstConnectionMoment).toBeDefined();
 
     // 4. First Conversation (User Activation achieved)
-    signals = recordSignalEvent(signals, { type: 'firstConversation', conversationId: 'convo_123' });
+    signals = recordSignalEvent(signals, {
+      type: 'firstConversation',
+      conversationId: 'convo_123',
+      discoveryMode: 'CULTURAL_BRIDGE'
+    });
     expect(signals.firstConversationAt).toBeDefined();
     expect(signals.isActivated).toBe(true);
     expect(signals.activatedAt).toBeDefined();
+    expect(signals.conversationReasonTypes?.['CULTURAL_BRIDGE']).toBe(1);
+  });
+
+  it('should track discoveryMode conversions for Human Connection Graph pattern modeling', () => {
+    let signals = getInitialSignals('test_user_2');
+    signals = recordSignalEvent(signals, {
+      type: 'like',
+      targetUid: 'cand_serendipity',
+      discoveryMode: 'SERENDIPITY'
+    });
+    expect(signals.likedReasonTypes?.['SERENDIPITY']).toBe(1);
+
+    signals = recordSignalEvent(signals, {
+      type: 'meaningfulInteraction',
+      conversationId: 'convo_999',
+      discoveryMode: 'SERENDIPITY'
+    });
+    expect(signals.conversationReasonTypes?.['SERENDIPITY']).toBe(1);
+    expect(signals.meaningfulInteractions).toBe(1);
   });
 });
