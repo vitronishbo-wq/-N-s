@@ -16,11 +16,15 @@ import {
   DiscoveryMode,
   DiscoveryEvidenceItem,
   DiscoveryEvidenceType,
-  DiscoveryCandidateEvidence
+  DiscoveryCandidateEvidence,
+  TrustBadge
 } from '../types';
 import { CandidateDiversityGuard, defaultDiversityGuard } from './diversityGuard';
 import { DiscoveryExpansionPolicy, defaultExpansionPolicy } from './expansionPolicy';
 import { recordSignalEvent } from './signals';
+import { connectionGraph } from './connectionGraph';
+import { trustGraph } from './trustGraph';
+import { dataSaver } from './dataSaverService';
 import { db, doc, setDoc } from '../firebase/config';
 
 export interface AffinityWeightConfig {
@@ -588,7 +592,9 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       items: structuredEvidence
     };
 
-    return {
+    const trustBadges = trustGraph.getBadgesForProfile(candidate);
+
+    const baseCandidate: DiscoveryCandidate = {
       profile: candidate,
       compatibilityScore: totalScore,
       deterministicScore: compatibility.deterministicScore + contextResult.countryAffinityBonus,
@@ -607,8 +613,15 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       connectionContext,
       conversationPrompt,
       discoveryMode,
-      evidenceDetails
+      evidenceDetails,
+      trustBadges
     };
+
+    if (myProfile) {
+      return connectionGraph.enrichCandidate(baseCandidate, myProfile);
+    }
+
+    return baseCandidate;
   }
 
   // 6. Diversify Candidates
@@ -957,9 +970,32 @@ export class DiscoveryAppService {
       });
     }
 
+    // PONTO 1: Record MCR Funnel Events (MUTUAL_INTEREST & CONVERSATION_INITIATED)
+    connectionGraph.recordFunnelEvent({
+      userId: myProfile.uid,
+      targetUid: target.uid,
+      stage: 'MUTUAL_INTEREST',
+      countryPair: [myProfile.countryCode, target.countryCode],
+      metadata: {
+        discoveryMode: targetCandidate.discoveryMode,
+        isSerendipitous: targetCandidate.discoveryMode === 'SERENDIPITY'
+      }
+    });
+
     const convoId = `convo_${[myProfile.uid, target.uid].sort().join('_')}`;
     const defaultReason = targetCandidate.compatibilityReasons?.[0] || `Sintonia Lusófona (${targetCandidate.compatibilityScore}%)`;
     const initialText = customContextText || `Olá, ${myProfile.displayName}! Adorei a nossa conexão sobre "${defaultReason}". Vamos conversar? 🌍✨`;
+
+    // Record Conversation Initiated stage in MCR Funnel
+    connectionGraph.recordFunnelEvent({
+      userId: myProfile.uid,
+      targetUid: target.uid,
+      stage: 'CONVERSATION_INITIATED',
+      countryPair: [myProfile.countryCode, target.countryCode],
+      metadata: {
+        icebreakerUsed: !!customContextText
+      }
+    });
 
     const newConvo: Conversation = {
       id: convoId,

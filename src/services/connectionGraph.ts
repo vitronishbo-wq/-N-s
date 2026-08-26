@@ -3,8 +3,14 @@ import {
   InteractionSignals,
   DiscoveryCandidate,
   RelationshipIntent,
-  CPLPCountryCode
+  CPLPCountryCode,
+  MCRFunnelStage,
+  ConnectionFunnelEvent,
+  MCRMetrics,
+  ConnectionOutcomeLearning,
+  TrustBadge
 } from '../types';
+import { db, doc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from '../firebase/config';
 
 export type CommunicationStyle = 'reflective' | 'expressive' | 'direct' | 'warm';
 export type ConversationalDepth = 'light' | 'moderate' | 'deep';
@@ -19,6 +25,8 @@ export interface ConnectionGraphNode {
   conversationalDepth: ConversationalDepth;
   responsivenessScore: number; // 0.0 - 1.0
   culturalBridgeAperture: number; // 0.0 - 1.0
+  successfulStylesLearned: string[];
+  complementaryFactorLearned: number;
 }
 
 export interface ConnectionGraphEdge {
@@ -29,16 +37,27 @@ export interface ConnectionGraphEdge {
   culturalSynergy: number;
   complementaryBalance: number;
   compositeSynergy: number;
+  isSerendipitous: boolean;
+  serendipityInsight?: string;
   insights: string[];
 }
 
+const LOCAL_EVENTS_STORAGE_KEY = 'enos_connection_funnel_events_v1';
+const LOCAL_LEARNINGS_STORAGE_KEY = 'enos_connection_learnings_v1';
+
 /**
- * 3.8, 3.9, 3.10, 3.11: Human Connection Graph (In-Memory Topology Overlay)
- * Models communication preference, reciprocity, conversational depth, initiative,
- * humor, cultural compatibility, and complementary differences purely from existing signals.
+ * Human Connection Graph & Meaningful Connection Engine (MCR)
+ * - PONTO 1: Connection Graph & MCR Metric calculation & Outcome Learning
+ * - PONTO 2: Reason-First Serendipitous Discovery ("A Descoberta Inesperada")
  */
 export class HumanConnectionGraph {
   private static instance: HumanConnectionGraph;
+  private inMemoryEvents: ConnectionFunnelEvent[] = [];
+  private inMemoryLearnings: ConnectionOutcomeLearning[] = [];
+
+  private constructor() {
+    this.hydrateFromLocalStorage();
+  }
 
   public static getInstance(): HumanConnectionGraph {
     if (!HumanConnectionGraph.instance) {
@@ -47,8 +66,32 @@ export class HumanConnectionGraph {
     return HumanConnectionGraph.instance;
   }
 
+  private hydrateFromLocalStorage(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      const storedEvents = localStorage.getItem(LOCAL_EVENTS_STORAGE_KEY);
+      if (storedEvents) {
+        this.inMemoryEvents = JSON.parse(storedEvents);
+      }
+      const storedLearnings = localStorage.getItem(LOCAL_LEARNINGS_STORAGE_KEY);
+      if (storedLearnings) {
+        this.inMemoryLearnings = JSON.parse(storedLearnings);
+      }
+    } catch (e) {
+      console.warn('Fallback hydration error:', e);
+    }
+  }
+
+  private persistLocal(): void {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(LOCAL_EVENTS_STORAGE_KEY, JSON.stringify(this.inMemoryEvents.slice(-200)));
+      localStorage.setItem(LOCAL_LEARNINGS_STORAGE_KEY, JSON.stringify(this.inMemoryLearnings.slice(-100)));
+    } catch {}
+  }
+
   /**
-   * 3.10 & 3.11: Infer communication style without burdensome questionnaires
+   * Infer communication style from organic cues
    */
   public inferCommunicationStyle(profile: UserProfile, signals?: InteractionSignals): CommunicationStyle {
     const bioLength = profile.bio ? profile.bio.trim().length : 0;
@@ -74,7 +117,7 @@ export class HumanConnectionGraph {
   }
 
   /**
-   * 3.10: Infer conversational depth
+   * Infer conversational depth
    */
   public inferConversationalDepth(profile: UserProfile, signals?: InteractionSignals): ConversationalDepth {
     const bioLength = profile.bio ? profile.bio.trim().length : 0;
@@ -90,7 +133,7 @@ export class HumanConnectionGraph {
   }
 
   /**
-   * 3.8 & 3.9: Create a normalized Graph Node for a user
+   * Create a normalized Graph Node for a user
    */
   public createNode(profile: UserProfile, signals?: InteractionSignals): ConnectionGraphNode {
     const communicationStyle = this.inferCommunicationStyle(profile, signals);
@@ -103,6 +146,15 @@ export class HumanConnectionGraph {
     const likedCountriesCount = Object.keys(signals?.likedCountries || {}).length;
     const culturalBridgeAperture = Math.min(1.0, 0.5 + (likedCountriesCount * 0.15));
 
+    // Incorporate learned conditions for this user
+    const userLearnings = this.inMemoryLearnings.filter(l => l.userId === profile.uid && l.successfulBond);
+    const successfulStylesLearned = Array.from(
+      new Set(userLearnings.flatMap(l => l.learnedPreferences.preferredStyles || []))
+    );
+    const complementaryFactorLearned = userLearnings.length > 0
+      ? userLearnings.reduce((acc, curr) => acc + (curr.learnedPreferences.complementaryBonusDelta || 0), 0) / userLearnings.length
+      : 0;
+
     return {
       uid: profile.uid,
       countryCode: profile.countryCode,
@@ -112,18 +164,20 @@ export class HumanConnectionGraph {
       communicationStyle,
       conversationalDepth,
       responsivenessScore,
-      culturalBridgeAperture
+      culturalBridgeAperture,
+      successfulStylesLearned,
+      complementaryFactorLearned
     };
   }
 
   /**
-   * 3.8, 3.9, 3.10: Evaluate Graph Edge between two nodes
+   * Evaluate Graph Edge between two nodes, determining resonance, reciprocity, cultural synergy and serendipity
    */
   public evaluateEdge(
     nodeA: ConnectionGraphNode,
     nodeB: ConnectionGraphNode
   ): ConnectionGraphEdge {
-    // 1. Communication Resonance (Styles that synergize well)
+    // 1. Communication Resonance
     let communicationResonance = 0.7;
     if (nodeA.communicationStyle === nodeB.communicationStyle) {
       communicationResonance = 0.95;
@@ -137,6 +191,11 @@ export class HumanConnectionGraph {
       communicationResonance = 0.65;
     }
 
+    // Boost if style was historically successful for nodeA
+    if (nodeA.successfulStylesLearned.includes(nodeB.communicationStyle)) {
+      communicationResonance = Math.min(1.0, communicationResonance + 0.1);
+    }
+
     // 2. Depth Harmony
     if (nodeA.conversationalDepth === nodeB.conversationalDepth) {
       communicationResonance += 0.05;
@@ -148,10 +207,13 @@ export class HumanConnectionGraph {
       ? Math.min(1.0, (nodeA.culturalBridgeAperture + nodeB.culturalBridgeAperture) / 2 + 0.2)
       : 0.85;
 
-    // 4. Complementary Balance (Distinct interests that broaden perspectives)
+    // 4. Complementary Balance (Distinct interests that broaden horizons)
     const shared = nodeA.interests.filter(i => nodeB.interests.includes(i));
     const different = nodeB.interests.filter(i => !nodeA.interests.includes(i));
-    const complementaryBalance = Math.min(1.0, (shared.length * 0.2) + (different.length * 0.15) + (nodeA.intent === nodeB.intent ? 0.3 : 0.1));
+    const complementaryBalance = Math.min(
+      1.0,
+      (shared.length * 0.2) + (different.length * 0.15) + (nodeA.intent === nodeB.intent ? 0.3 : 0.1) + nodeA.complementaryFactorLearned
+    );
 
     // 5. Reciprocity estimation
     const reciprocityScore = (nodeA.responsivenessScore + nodeB.responsivenessScore) / 2;
@@ -164,6 +226,20 @@ export class HumanConnectionGraph {
       reciprocityScore * 0.20
     );
 
+    // 6. Serendipity / "A Descoberta Inesperada" Detection
+    // High communication harmony + different backgrounds/interests + compatible intent
+    const isSerendipitous = (
+      communicationResonance >= 0.85 &&
+      different.length >= 2 &&
+      shared.length <= 1 &&
+      (isCrossCountry || nodeA.cityName !== nodeB.cityName)
+    );
+
+    let serendipityInsight: string | undefined;
+    if (isSerendipitous) {
+      serendipityInsight = `Vocês têm trajetórias diferentes (${different.slice(0, 2).join(' & ')}), mas um ritmo comunicativo e abertura surpreendentemente alinhados para conversas profundas.`;
+    }
+
     const insights: string[] = [];
     if (communicationResonance > 0.85) {
       insights.push(`Ressonância comunicativa natural (${nodeA.communicationStyle} ↔ ${nodeB.communicationStyle})`);
@@ -174,6 +250,9 @@ export class HumanConnectionGraph {
     if (different.length > 0) {
       insights.push(`Diferenças complementares com partilha de novos temas (${different.slice(0, 2).join(', ')})`);
     }
+    if (isSerendipitous && serendipityInsight) {
+      insights.push(serendipityInsight);
+    }
 
     return {
       sourceUid: nodeA.uid,
@@ -183,12 +262,145 @@ export class HumanConnectionGraph {
       culturalSynergy,
       complementaryBalance,
       compositeSynergy,
+      isSerendipitous,
+      serendipityInsight,
       insights
     };
   }
 
   /**
-   * 3.10: Enrich candidate with Graph Synergies
+   * PONTO 1: Track connection funnel progression (MCR Telemetry)
+   */
+  public async recordFunnelEvent(eventData: {
+    userId: string;
+    targetUid: string;
+    stage: MCRFunnelStage;
+    countryPair: [CPLPCountryCode, CPLPCountryCode];
+    communityTag?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<ConnectionFunnelEvent> {
+    const event: ConnectionFunnelEvent = {
+      id: `mcr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      userId: eventData.userId,
+      targetUid: eventData.targetUid,
+      stage: eventData.stage,
+      countryPair: eventData.countryPair,
+      communityTag: eventData.communityTag,
+      metadata: eventData.metadata as ConnectionFunnelEvent['metadata'],
+      timestamp: Date.now()
+    };
+
+    this.inMemoryEvents.push(event);
+    this.persistLocal();
+
+    // Async persist to Firestore non-blocking
+    try {
+      await setDoc(doc(db, 'connection_events', event.id), {
+        ...event,
+        serverTimestamp: serverTimestamp()
+      });
+    } catch (e) {
+      // Offline fallback
+      console.info('Connection funnel event queued locally:', event.stage);
+    }
+
+    return event;
+  }
+
+  /**
+   * PONTO 1: Outcome Learning: Records what produced reciprocal continuity or why a conversation stalled
+   */
+  public async recordOutcomeFeedback(learning: Omit<ConnectionOutcomeLearning, 'recordedAt'>): Promise<void> {
+    const record: ConnectionOutcomeLearning = {
+      ...learning,
+      recordedAt: Date.now()
+    };
+
+    this.inMemoryLearnings.push(record);
+    this.persistLocal();
+
+    try {
+      const docId = `learn_${record.userId}_${record.targetUid}_${Date.now()}`;
+      await setDoc(doc(db, 'connection_learnings', docId), {
+        ...record,
+        serverTimestamp: serverTimestamp()
+      });
+    } catch {}
+  }
+
+  /**
+   * PONTO 1: Computes the Meaningful Connection Rate (MCR) North Star Metric
+   */
+  public calculateMCRMetrics(filter?: { countryCode?: CPLPCountryCode; community?: string }): MCRMetrics {
+    let events = this.inMemoryEvents;
+
+    if (filter?.countryCode) {
+      events = events.filter(e => e.countryPair[0] === filter.countryCode || e.countryPair[1] === filter.countryCode);
+    }
+    if (filter?.community) {
+      events = events.filter(e => e.communityTag === filter.community);
+    }
+
+    const uniquePairsByStage: Record<MCRFunnelStage, Set<string>> = {
+      DISCOVERY: new Set(),
+      MUTUAL_INTEREST: new Set(),
+      CONVERSATION_INITIATED: new Set(),
+      RECIPROCITY: new Set(),
+      CONTINUITY: new Set(),
+      MEANINGFUL_CONNECTION: new Set()
+    };
+
+    const byCountryPair: Record<string, number> = {};
+    const byCommunity: Record<string, number> = {};
+
+    for (const e of events) {
+      const pairKey = [e.userId, e.targetUid].sort().join(':');
+      if (uniquePairsByStage[e.stage]) {
+        uniquePairsByStage[e.stage].add(pairKey);
+      }
+
+      if (e.stage === 'MEANINGFUL_CONNECTION') {
+        const cPair = `${e.countryPair[0]}-${e.countryPair[1]}`;
+        byCountryPair[cPair] = (byCountryPair[cPair] || 0) + 1;
+        if (e.communityTag) {
+          byCommunity[e.communityTag] = (byCommunity[e.communityTag] || 0) + 1;
+        }
+      }
+    }
+
+    const totalDiscovered = Math.max(1, uniquePairsByStage.DISCOVERY.size);
+    const totalMutualInterests = uniquePairsByStage.MUTUAL_INTEREST.size;
+    const totalConversationsStarted = uniquePairsByStage.CONVERSATION_INITIATED.size;
+    const totalReciprocal = uniquePairsByStage.RECIPROCITY.size;
+    const totalContinuous = uniquePairsByStage.CONTINUITY.size;
+    const totalMeaningful = uniquePairsByStage.MEANINGFUL_CONNECTION.size;
+
+    const mcrScorePercent = (totalMeaningful / totalDiscovered) * 100;
+    const reciprocityRatePercent = totalConversationsStarted > 0
+      ? (totalReciprocal / totalConversationsStarted) * 100
+      : 0;
+    const continuityRatePercent = totalReciprocal > 0
+      ? (totalContinuous / totalReciprocal) * 100
+      : 0;
+
+    return {
+      totalDiscovered,
+      totalMutualInterests,
+      totalConversationsStarted,
+      totalReciprocal,
+      totalContinuous,
+      totalMeaningful,
+      mcrScorePercent: Math.round(mcrScorePercent * 10) / 10,
+      reciprocityRatePercent: Math.round(reciprocityRatePercent * 10) / 10,
+      continuityRatePercent: Math.round(continuityRatePercent * 10) / 10,
+      calculatedAt: Date.now(),
+      byCountryPair,
+      byCommunity
+    };
+  }
+
+  /**
+   * Enrich candidate with Graph Synergies & Serendipity Insights
    */
   public enrichCandidate(
     candidate: DiscoveryCandidate,
@@ -199,8 +411,21 @@ export class HumanConnectionGraph {
     const nodeB = this.createNode(candidate.profile);
     const edge = this.evaluateEdge(nodeA, nodeB);
 
+    let discoveryMode = candidate.discoveryMode;
+    let discoveryReason = candidate.discoveryReason;
+
+    if (edge.isSerendipitous) {
+      discoveryMode = 'SERENDIPITY';
+      if (edge.serendipityInsight) {
+        discoveryReason = `✦ Descoberta Inesperada: ${edge.serendipityInsight}`;
+      }
+    }
+
     return {
       ...candidate,
+      discoveryMode,
+      discoveryReason,
+      serendipityInsight: edge.serendipityInsight,
       confidence: Math.min(1.0, (candidate.confidence || 0.8) + (edge.compositeSynergy * 0.1))
     };
   }

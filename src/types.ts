@@ -478,6 +478,116 @@ export interface DiscoveryCandidate {
   discoveryMode: DiscoveryMode;
   evidenceDetails?: DiscoveryCandidateEvidence;
   prioritizationScore?: ContextualPrioritizationScore;
+  trustBadges?: TrustBadge[];
+  serendipityInsight?: string;
+}
+
+// -------------------------------------------------------------
+// PONTO 1: Meaningful Connection Rate (MCR) & Connection Funnel
+// -------------------------------------------------------------
+export type MCRFunnelStage =
+  | 'DISCOVERY'              // Candidate shown to user
+  | 'MUTUAL_INTEREST'        // Mutual like / approach
+  | 'CONVERSATION_INITIATED' // First message exchanged
+  | 'RECIPROCITY'            // Mutual replies exchanged (>= 3 messages back and forth)
+  | 'CONTINUITY'             // Active dialogue past 24h or > 8 messages
+  | 'MEANINGFUL_CONNECTION'; // High engagement, audio/contact exchange, or positive connection rating
+
+export interface ConnectionFunnelEvent {
+  id: string;
+  userId: string;
+  targetUid: string;
+  stage: MCRFunnelStage;
+  timestamp: number;
+  countryPair: [CPLPCountryCode, CPLPCountryCode];
+  communityTag?: string;
+  metadata?: {
+    messageCount?: number;
+    hoursActive?: number;
+    icebreakerUsed?: boolean;
+    communicationStyleMatch?: boolean;
+    serendipityMode?: boolean;
+    rating?: number;
+  };
+}
+
+export interface MCRMetrics {
+  totalDiscovered: number;
+  totalMutualInterests: number;
+  totalConversationsStarted: number;
+  totalReciprocal: number;
+  totalContinuous: number;
+  totalMeaningful: number;
+  mcrScorePercent: number; // (totalMeaningful / totalDiscovered) * 100
+  reciprocityRatePercent: number;
+  continuityRatePercent: number;
+  calculatedAt: number;
+  byCountryPair?: Record<string, number>;
+  byCommunity?: Record<string, number>;
+}
+
+export interface ConnectionOutcomeLearning {
+  userId: string;
+  targetUid: string;
+  successfulBond: boolean;
+  icebreakerEffective: boolean;
+  resonanceFactors: string[];
+  stallStage?: MCRFunnelStage;
+  learnedPreferences: {
+    preferredStyles?: string[];
+    complementaryBonusDelta?: number;
+    depthTolerance?: 'light' | 'moderate' | 'deep';
+  };
+  recordedAt: number;
+}
+
+// -------------------------------------------------------------
+// PONTO 3: ÉNós Trust Graph (5 Private Tiers & Friendly Badges)
+// -------------------------------------------------------------
+export type TrustBadgeType =
+  | 'identity_verified'      // ✓ Identidade Verificada
+  | 'authentic_profile'      // ✓ Perfil Autêntico
+  | 'trusted_member'         // ✓ Membro Confiável
+  | 'respectful_dialogue'    // ✓ Diálogo Respeitoso
+  | 'active_presence';       // ✓ Presença Ativa
+
+export interface TrustBadge {
+  type: TrustBadgeType;
+  label: string;
+  description: string;
+  iconName: string;
+  grantedAt: number;
+}
+
+export interface PrivateTrustGraphEvaluation {
+  userId: string;
+  identityScore: number;        // 0.0 - 1.0 (phone/email/biometrics)
+  authenticityScore: number;    // 0.0 - 1.0 (bio richness, genuine photos)
+  safetyScore: number;          // 0.0 - 1.0 (zero violations or warnings)
+  consistencyScore: number;     // 0.0 - 1.0 (profile declarations vs behavior)
+  interactionQualityScore: number; // 0.0 - 1.0 (reciprocity, respect, cordiality)
+  isSuspicious: boolean;
+  badges: TrustBadge[];
+  evaluatedAt: number;
+}
+
+// -------------------------------------------------------------
+// PONTO 4: Data Saver & CPLP Offline-Resilience Contracts
+// -------------------------------------------------------------
+export interface DataSaverSettings {
+  enabled: boolean;
+  qualityLevel: 'ultra_low' | 'balanced' | 'high';
+  autoDownloadAudio: boolean;
+  loadThumbnailsOnly: boolean;
+  offlineQueueSyncEnabled: boolean;
+}
+
+export interface OfflineQueuedEvent {
+  id: string;
+  type: 'like' | 'pass' | 'message' | 'telemetry' | 'outcome';
+  payload: Record<string, unknown>;
+  enqueuedAt: number;
+  retryCount: number;
 }
 
 // 4.22 & 4.23: Discovery Availability Status

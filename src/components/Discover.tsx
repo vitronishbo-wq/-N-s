@@ -6,11 +6,13 @@ import {
   PrivacySettings,
   InteractionSignals,
   DiscoveryCandidate,
-  ExpansionLevel
+  ExpansionLevel,
+  TrustBadge
 } from '../types';
 import { DiscoveryAppService } from '../services/discoveryService';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { persistCommunityAnswer, persistDiscoveryEvent } from '../services/discoveryPersistence';
+import { dataSaver } from '../services/dataSaverService';
 import { CPLP_COUNTRIES } from '../constants';
 import {
   Sparkles,
@@ -18,6 +20,7 @@ import {
   MapPin,
   Globe,
   ShieldAlert,
+  ShieldCheck,
   SlidersHorizontal,
   RefreshCw,
   Layers,
@@ -37,7 +40,8 @@ import {
   ChevronRight,
   TrendingUp,
   Award,
-  Zap
+  Zap,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -612,6 +616,22 @@ export const Discover: React.FC<DiscoverProps> = ({
         </div>
 
         <div className="p-4 sm:p-5 space-y-4">
+          {/* SERENDIPITY SPECIAL CALLOUT (DESCOBERTA INESPERADA) */}
+          {(currentCandidate.discoveryMode === 'SERENDIPITY' || currentCandidate.serendipityInsight) && (
+            <div
+              id="serendipity-insight-callout"
+              className="p-3 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-purple-500/10 border border-amber-300/60 rounded-xl flex items-start gap-2.5 shadow-2xs"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs">
+                <span className="font-bold text-amber-900 block font-serif">✦ Descoberta Inesperada</span>
+                <p className="text-stone-700 leading-relaxed mt-0.5">
+                  {currentCandidate.serendipityInsight || 'Perfis com trajetórias distintas, mas um ritmo comunicativo e abertura surpreendentemente alinhados.'}
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* CANDIDATE IDENTITY BLOCK (POSITIONED DIRECTLY BELOW REASON HEADER) */}
           <div className="flex items-center justify-between pb-3 border-b border-stone-100">
             <div className="flex items-center gap-2.5">
@@ -644,6 +664,26 @@ export const Discover: React.FC<DiscoverProps> = ({
               </span>
             </div>
           </div>
+
+          {/* TRUST GRAPH BADGES ROW (PONTO 3: CONFIRMAÇÃO NÃO-PUNITIVA) */}
+          {currentCandidate.trustBadges && currentCandidate.trustBadges.length > 0 && (
+            <div
+              id="candidate-trust-badges-row"
+              className="flex flex-wrap items-center gap-1.5 py-1"
+              aria-label="Distintivos de Confiança ÉNós"
+            >
+              {currentCandidate.trustBadges.slice(0, 3).map((badge, bIdx) => (
+                <span
+                  key={bIdx}
+                  title={badge.description}
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold bg-stone-100 text-stone-800 px-2 py-0.5 rounded-full border border-stone-200 shadow-2xs"
+                >
+                  <ShieldCheck className="w-3 h-3 text-emerald-600 shrink-0" />
+                  <span>{badge.label}</span>
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* ─────────────────────────────────────────────────────────
               DYNAMIC UI MARKERS: Cultural Connection vs Conversation Potential
@@ -895,7 +935,7 @@ export const Discover: React.FC<DiscoverProps> = ({
                   className="relative aspect-4/3 w-full rounded-xl overflow-hidden bg-stone-100 border border-stone-200"
                 >
                   <img
-                    src={targetProfile.profilePhoto}
+                    src={dataSaver.getOptimizedImageUrl(targetProfile.profilePhoto)}
                     alt={targetProfile.displayName}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
