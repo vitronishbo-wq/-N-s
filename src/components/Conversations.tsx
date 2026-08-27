@@ -3,8 +3,10 @@ import { Conversation, ChatMessage, UserProfile, TrustBadge } from '../types';
 import { CPLP_COUNTRIES } from '../constants';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { connectionGraph } from '../services/connectionGraph';
+import { relationalMemory } from '../services/relationalMemory';
 import { trustGraph } from '../services/trustGraph';
 import { dataSaver } from '../services/dataSaverService';
+import { OptimizedImage } from './common/OptimizedImage';
 import {
   Send,
   ArrowLeft,
@@ -104,8 +106,47 @@ export const Conversations: React.FC<ConversationsProps> = ({
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !selectedConvoId) return;
+    if (!inputText.trim() || !selectedConvoId || !otherUid || !otherUser) return;
+    
+    const msgCount = currentMessages.length;
     onSendMessage(selectedConvoId, inputText.trim());
+
+    // Record MCR Funnel Events automatically as conversation matures
+    if (msgCount === 0) {
+      connectionGraph.recordFunnelEvent({
+        userId: myProfile.uid,
+        targetUid: otherUid,
+        stage: 'CONVERSATION_STARTED',
+        countryPair: [myProfile.countryCode, otherUser.countryCode],
+        metadata: {
+          messageCount: 1,
+          icebreakerUsed: icebreakers.length > 0
+        }
+      });
+    } else if (msgCount === 3) {
+      connectionGraph.recordFunnelEvent({
+        userId: myProfile.uid,
+        targetUid: otherUid,
+        stage: 'MEANINGFUL_RECIPROCITY',
+        countryPair: [myProfile.countryCode, otherUser.countryCode],
+        metadata: {
+          messageCount: 4,
+          turnExchangeRatio: 1.0
+        }
+      });
+    } else if (msgCount === 7) {
+      connectionGraph.recordFunnelEvent({
+        userId: myProfile.uid,
+        targetUid: otherUid,
+        stage: 'CONTINUITY',
+        countryPair: [myProfile.countryCode, otherUser.countryCode],
+        metadata: {
+          messageCount: 8,
+          hoursActive: 24
+        }
+      });
+    }
+
     setInputText('');
     setIcebreakers([]);
   };
@@ -154,6 +195,47 @@ export const Conversations: React.FC<ConversationsProps> = ({
         depthTolerance: 'deep'
       }
     });
+
+    // Record Relational Memory Condition Tuple (Pessoa + Contexto + Comportamento + Reciprocidade + Resultado)
+    await relationalMemory.recordConditionTuple({
+      userId: myProfile.uid,
+      targetUid: otherUid,
+      person: {
+        userStyle: 'reflective',
+        targetStyle: 'reflective',
+        userDepth: 'deep',
+        targetDepth: 'deep',
+        intentMatch: true,
+        culturalPair: [myProfile.countryCode, otherUser.countryCode],
+        crossBorder: myProfile.countryCode !== otherUser.countryCode
+      },
+      context: {
+        discoveryOrigin: 'CULTURAL_BRIDGE',
+        sharedValues: myProfile.interests.filter(i => (otherUser.interests || []).includes(i)),
+        differingInterests: (otherUser.interests || []).filter(i => !myProfile.interests.includes(i))
+      },
+      behavior: {
+        icebreakerType: 'values_reflection',
+        initiatorSpeedHours: 1.5,
+        responderSpeedHours: 2.0,
+        avgMessageWords: 24,
+        dialogueInitiative: 'balanced'
+      },
+      reciprocity: {
+        turnExchangeRatio: 0.95,
+        backAndForthTurns: Math.floor(currentMessages.length / 2),
+        questionReturnedRate: 0.9,
+        sentimentResonance: 0.95,
+        vulnerabilityDeepened: true
+      },
+      outcome: {
+        stage: 'MEANINGFUL_CONNECTION',
+        isMeaningfulBond: true,
+        continuityDays: 1,
+        thriveDrivers: ['Ponte Cultural Lusófona', 'Reciprocidade Simétrica', 'Diálogo com Profundidade'],
+        qualitativeFeedback: `Sintonia fértil com reciprocidade simétrica e ponte cultural entre ${myProfile.cityName} e ${otherUser.cityName || 'CPLP'}`
+      }
+    });
   };
 
   // If in chat detail view
@@ -199,11 +281,11 @@ export const Conversations: React.FC<ConversationsProps> = ({
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="relative">
-              <img
-                src={dataSaver.getOptimizedImageUrl(otherUser.profilePhoto, true)}
+              <OptimizedImage
+                src={otherUser.profilePhoto}
                 alt={otherUser.displayName}
-                className="w-10 h-10 rounded-full object-cover border border-stone-200"
-                referrerPolicy="no-referrer"
+                variant="avatar"
+                className="w-10 h-10 rounded-full border border-stone-200"
               />
               <span className="absolute bottom-0 right-0 text-xs leading-none">{countryInfo.flag}</span>
             </div>
@@ -290,11 +372,11 @@ export const Conversations: React.FC<ConversationsProps> = ({
                     }`}
                   >
                     {msg.imageUrl && (
-                      <img
-                        src={dataSaver.getOptimizedImageUrl(msg.imageUrl)}
+                      <OptimizedImage
+                        src={msg.imageUrl}
                         alt="Foto enviada"
-                        className="rounded-lg mb-1.5 max-h-48 object-cover w-full"
-                        referrerPolicy="no-referrer"
+                        variant="chat"
+                        className="rounded-lg mb-1.5 max-h-48 w-full"
                       />
                     )}
                     {msg.text && <p>{msg.text}</p>}
@@ -411,11 +493,11 @@ export const Conversations: React.FC<ConversationsProps> = ({
                 className="w-full p-3.5 flex items-center gap-3 hover:bg-stone-50 transition text-left"
               >
                 <div className="relative shrink-0">
-                  <img
-                    src={dataSaver.getOptimizedImageUrl(partner.profilePhoto, true)}
+                  <OptimizedImage
+                    src={partner.profilePhoto}
                     alt={partner.displayName}
-                    className="w-12 h-12 rounded-full object-cover border border-stone-200"
-                    referrerPolicy="no-referrer"
+                    variant="thumbnail"
+                    className="w-12 h-12 rounded-full border border-stone-200"
                   />
                   <span className="absolute bottom-0 right-0 text-xs leading-none bg-white rounded-full p-0.5 shadow-2xs">
                     {country.flag}

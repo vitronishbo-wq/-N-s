@@ -484,14 +484,21 @@ export interface DiscoveryCandidate {
 
 // -------------------------------------------------------------
 // PONTO 1: Meaningful Connection Rate (MCR) & Connection Funnel
+// 8-Stage Refined Funnel: IMPRESSION → QUALIFIED_DISCOVERY → INTENTIONAL_INTEREST → MUTUAL_INTEREST → CONVERSATION_STARTED → MEANINGFUL_RECIPROCITY → CONTINUITY → MEANINGFUL_CONNECTION
 // -------------------------------------------------------------
 export type MCRFunnelStage =
-  | 'DISCOVERY'              // Candidate shown to user (DISCOVERED)
-  | 'MUTUAL_INTEREST'        // Mutual like / approach (MUTUAL_INTEREST)
-  | 'CONVERSATION_INITIATED' // First message exchanged (CONVERSATION_STARTED)
-  | 'RECIPROCITY'            // Mutual replies exchanged (>= 3 messages back and forth) (RECIPROCITY_REACHED)
-  | 'CONTINUITY'             // Active dialogue past 24h or > 8 messages (CONTINUITY_REACHED)
-  | 'MEANINGFUL_CONNECTION'; // High engagement, audio/contact exchange, or confirmed meaningful bond
+  | 'IMPRESSION'              // 1. Perfil/candidato exibido no feed (visualização inicial)
+  | 'QUALIFIED_DISCOVERY'     // 2. Descoberta qualificada (leitura profunda de biografia, áudio, motivos)
+  | 'INTENTIONAL_INTEREST'    // 3. Interesse intencional (like contextualizado, resposta a pergunta/prompt)
+  | 'MUTUAL_INTEREST'         // 4. Interesse mútuo / match confirmado
+  | 'CONVERSATION_STARTED'    // 5. Início de conversa (primeira mensagem enviada)
+  | 'MEANINGFUL_RECIPROCITY'  // 6. Reciprocidade significativa (trocas mútuas de turnos com perguntas)
+  | 'CONTINUITY'              // 7. Continuidade (diálogo mantido após 24h ou profundidade contínua)
+  | 'MEANINGFUL_CONNECTION'   // 8. Conexão significativa confirmada (vínculo, áudio, troca de contactos)
+  // Legacy aliases supported for backward compatibility:
+  | 'DISCOVERY'
+  | 'CONVERSATION_INITIATED'
+  | 'RECIPROCITY';
 
 export type DiscoveryOriginTag =
   | 'SERENDIPITY'
@@ -521,32 +528,78 @@ export interface ConnectionFunnelEvent {
     serendipityMode?: boolean;
     userRating?: number;
     rating?: number;
+    revelationStep?: string;
+    dwellTimeSec?: number;
   };
+}
+
+export interface MCRDiagnosticBottleneck {
+  id: string;
+  fromStage: MCRFunnelStage;
+  toStage: MCRFunnelStage;
+  stageLabel: string;
+  conversionRatePercent: number;
+  dropoffPercent: number;
+  totalFrom: number;
+  totalTo: number;
+  status: 'EXEMPLARY' | 'HEALTHY' | 'WARNING' | 'CRITICAL';
+  diagnosticRule: string; // e.g. "Muitas descobertas, poucos interesses → descoberta ruim"
+  diagnosis: string;
+  rootCauseCategory: 'DISCOVERY_QUALITY' | 'ICEBREAKER_QUALITY' | 'MATCHING_RESONANCE' | 'EXPECTATION_ALIGNMENT' | 'FERTILE_RETENTION';
+  actionableRemedy: string;
 }
 
 export interface MCROriginBreakdown {
   origin: string;
   originLabel: string;
-  totalDiscovered: number;
+  totalImpressions: number;
+  totalQualifiedDiscoveries: number;
+  totalIntentionalInterests: number;
   totalMutualInterests: number;
   totalConversationsStarted: number;
-  totalReciprocal: number;
-  totalContinuous: number;
-  totalMeaningful: number;
+  totalMeaningfulReciprocity: number;
+  totalContinuity: number;
+  totalMeaningfulConnections: number;
+  // Legacy aliases
+  totalDiscovered?: number;
+  totalReciprocal?: number;
+  totalContinuous?: number;
+  totalMeaningful?: number;
   mcrScorePercent: number;
   reciprocityRatePercent: number;
 }
 
 export interface MCRMetrics {
-  totalDiscovered: number;
+  // Refined 8-stage counts
+  totalImpressions: number;
+  totalQualifiedDiscoveries: number;
+  totalIntentionalInterests: number;
   totalMutualInterests: number;
   totalConversationsStarted: number;
+  totalMeaningfulReciprocity: number;
+  totalContinuity: number;
+  totalMeaningfulConnections: number;
+
+  // Legacy aliases for backward compatibility
+  totalDiscovered: number;
   totalReciprocal: number;
   totalContinuous: number;
   totalMeaningful: number;
-  mcrScorePercent: number; // (totalMeaningful / totalDiscovered) * 100
-  reciprocityRatePercent: number;
-  continuityRatePercent: number;
+
+  // Primary KPIs
+  mcrScorePercent: number; // (totalMeaningfulConnections / totalImpressions) * 100
+  qualifiedDiscoveryRatePercent: number; // (totalQualifiedDiscoveries / totalImpressions) * 100
+  interestIntentRatePercent: number; // (totalIntentionalInterests / totalQualifiedDiscoveries) * 100
+  matchToConversationRatePercent: number; // (totalConversationsStarted / totalMutualInterests) * 100
+  reciprocityRatePercent: number; // (totalMeaningfulReciprocity / totalConversationsStarted) * 100
+  continuityRatePercent: number; // (totalContinuity / totalMeaningfulReciprocity) * 100
+  meaningfulConversionRatePercent: number; // (totalMeaningfulConnections / totalContinuity) * 100
+
+  // Diagnostics & Failure Points
+  diagnostics: MCRDiagnosticBottleneck[];
+  topBottleneck?: MCRDiagnosticBottleneck;
+  thrivingLearnedPatterns: string[];
+
   calculatedAt: number;
   timeframe?: '7d' | '30d' | 'all';
   byCountryPair?: Record<string, number>;
@@ -570,7 +623,90 @@ export interface ConnectionOutcomeLearning {
 }
 
 // -------------------------------------------------------------
-// PONTO 3: ÉNós Trust Graph (5 Private Tiers & Friendly Badges)
+// RELATIONAL CONDITION MEMORY (Memória sobre as Condições de Conexão Fértil)
+// Unidade de valor: pessoa + contexto + comportamento + reciprocidade + resultado
+// -------------------------------------------------------------
+export interface RelationalConditionTuple {
+  id: string;
+  userId: string;
+  targetUid: string;
+  person: {
+    userStyle: 'reflective' | 'expressive' | 'direct' | 'warm';
+    targetStyle: 'reflective' | 'expressive' | 'direct' | 'warm';
+    userDepth: 'light' | 'moderate' | 'deep';
+    targetDepth: 'light' | 'moderate' | 'deep';
+    intentMatch: boolean;
+    culturalPair: [CPLPCountryCode, CPLPCountryCode];
+    crossBorder: boolean;
+  };
+  context: {
+    discoveryOrigin: string; // e.g. SERENDIPITY, CULTURAL_BRIDGE, VALUES_AFFINITY, COMMUNITY_QUESTION
+    communityTag?: string;
+    sharedValues: string[];
+    differingInterests: string[];
+    temporalMoment?: 'morning' | 'afternoon' | 'evening' | 'weekend';
+  };
+  behavior: {
+    icebreakerType: 'question' | 'values_reflection' | 'audio_snippet' | 'direct_greeting';
+    initiatorSpeedHours: number;
+    responderSpeedHours: number;
+    avgMessageWords: number;
+    dialogueInitiative: 'balanced' | 'user_led' | 'target_led';
+  };
+  reciprocity: {
+    turnExchangeRatio: number; // 0.0 - 1.0 (1.0 = perfect 50/50 balance)
+    backAndForthTurns: number;
+    questionReturnedRate: number; // 0.0 - 1.0
+    sentimentResonance: number; // 0.0 - 1.0
+    vulnerabilityDeepened: boolean;
+  };
+  outcome: {
+    stage: MCRFunnelStage;
+    isMeaningfulBond: boolean;
+    continuityDays: number;
+    stallReason?: string;
+    thriveDrivers: string[];
+    qualitativeFeedback?: string;
+  };
+  recordedAt: number;
+}
+
+export interface UserRelationalMemory {
+  userId: string;
+  totalConditionsAnalyzed: number;
+  meaningfulBondsCount: number;
+  fertileConditions: {
+    topResonantStyles: ('reflective' | 'expressive' | 'direct' | 'warm')[];
+    optimalDepthPreference: 'light' | 'moderate' | 'deep';
+    thrivingContexts: {
+      topOrigins: string[];
+      crossBorderSuccessRate: number;
+      idealComplementarityFormula: string; // e.g. "1-2 valores partilhados + 2 interesses complementares"
+    };
+    reciprocityPace: {
+      idealResponseWindow: string; // e.g. "1h a 4h com desenvolvimento de ideias"
+      preferredTurnBalance: 'symmetric' | 'fluid';
+      effectiveIcebreakers: Record<string, number>; // e.g. { values_reflection: 0.88, question: 0.75 }
+    };
+    frictionTriggers: string[]; // e.g. ["Monólogos unilaterais", "Respostas curtas sem perguntas", "Quebra precoce de diálogo"]
+    synthesizedInsight: string; // "As tuas conexões florescem quando..."
+  };
+  lastUpdated: number;
+}
+
+export interface ConditionFitnessEvaluation {
+  targetUid: string;
+  fitnessScore: number; // 0.0 - 1.0
+  predictedSynergyLevel: 'high_probability_resonance' | 'moderate_resonance' | 'exploratory';
+  fertileSignals: string[]; // Condições que combinam com a memória pessoal
+  cautionFactors: string[];
+  recommendedOpeningContext?: string;
+  fertileReasoning?: string;
+  matchedConditions?: string[];
+}
+
+// -------------------------------------------------------------
+// PONTO 3: ÉNós Trust Graph (Evidence -> Backend Validation -> Private Signals -> Eligibility -> Public Badges)
 // -------------------------------------------------------------
 export type TrustBadgeType =
   | 'identity_verified'      // ✓ Identidade Verificada
@@ -579,24 +715,88 @@ export type TrustBadgeType =
   | 'respectful_dialogue'    // ✓ Diálogo Respeitoso
   | 'active_presence';       // ✓ Presença Ativa
 
+export type TrustEvidenceType =
+  | 'national_id_verification'
+  | 'passport_verification'
+  | 'phone_sms_proof'
+  | 'email_domain_proof'
+  | 'selfie_liveness_proof'
+  | 'interaction_reciprocity_proof'
+  | 'clean_safety_tenure_proof'
+  | 'community_contribution_proof'
+  | 'moderator_manual_clearance';
+
+export interface TrustEvidenceRecord {
+  id: string;
+  userId: string;
+  type: TrustEvidenceType;
+  source: 'system_crypto_validation' | 'backend_policy_engine' | 'admin_moderator_audit' | 'biometric_provider';
+  status: 'verified' | 'pending' | 'rejected' | 'revoked';
+  verifiedAt: number;
+  expiresAt?: number;
+  auditedBy?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface PrivateTrustSignals {
+  userId: string;
+  // Multi-dimensional private signals (NEVER exposed as a single gamified/manipulative public score)
+  identityEvidenceLevel: 'none' | 'basic_phone' | 'verified_id' | 'biometric_cleared';
+  profileAuthenticityLevel: 'minimal' | 'partial' | 'authentic_comprehensive';
+  safetyTenureDays: number;
+  confirmedSafetyViolations: number;
+  activeDisputesOrFlags: number;
+  reciprocalDialogueCount: number;
+  meaningfulConnectionsCount: number;
+  activeDaysPast30d: number;
+  accountAgeDays: number;
+  lastValidatedAt: number;
+}
+
+export interface TrustEligibilityPolicy {
+  badgeType: TrustBadgeType;
+  title: string;
+  description: string;
+  criteriaSummary: string;
+  requiredEvidenceTypes: TrustEvidenceType[];
+  minimumSafetyTenureDays: number;
+  maxViolationsAllowed: number;
+  requiresAdminClearance: boolean;
+  publicLabel: string;
+  publicDescription: string;
+  dignityGuaranteed: boolean; // Anti-humiliation policy: only non-punitive, positive recognition
+}
+
 export interface TrustBadge {
   type: TrustBadgeType;
   label: string;
   description: string;
   iconName: string;
+  issuedByAuthority: string;
   grantedAt: number;
+}
+
+export interface TrustVerificationRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userCountry: CPLPCountryCode;
+  evidenceType: TrustEvidenceType;
+  documentHash?: string;
+  submittedAt: number;
+  status: 'pending' | 'in_review' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  reviewedAt?: number;
+  justification?: string;
 }
 
 export interface PrivateTrustGraphEvaluation {
   userId: string;
-  identityScore: number;        // 0.0 - 1.0 (phone/email/biometrics)
-  authenticityScore: number;    // 0.0 - 1.0 (bio richness, genuine photos)
-  safetyScore: number;          // 0.0 - 1.0 (zero violations or warnings)
-  consistencyScore: number;     // 0.0 - 1.0 (profile declarations vs behavior)
-  interactionQualityScore: number; // 0.0 - 1.0 (reciprocity, respect, cordiality)
-  isSuspicious: boolean;
-  badges: TrustBadge[];
+  signals: PrivateTrustSignals;
+  eligibleBadges: TrustBadge[];
+  disqualifiedReasons?: string[];
   evaluatedAt: number;
+  evaluatorAuthority: 'enos_backend_trust_engine' | 'cplp_moderation_board';
 }
 
 // -------------------------------------------------------------

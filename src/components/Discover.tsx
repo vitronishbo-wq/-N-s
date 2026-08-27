@@ -13,8 +13,10 @@ import { DiscoveryAppService } from '../services/discoveryService';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { persistCommunityAnswer, persistDiscoveryEvent } from '../services/discoveryPersistence';
 import { connectionGraph } from '../services/connectionGraph';
+import { relationalMemory } from '../services/relationalMemory';
 import { dataSaver } from '../services/dataSaverService';
 import { CPLP_COUNTRIES } from '../constants';
+import { OptimizedImage } from './common/OptimizedImage';
 import {
   Sparkles,
   MessageCircle,
@@ -42,7 +44,8 @@ import {
   TrendingUp,
   Award,
   Zap,
-  Check
+  Check,
+  Brain
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -223,12 +226,12 @@ export const Discover: React.FC<DiscoverProps> = ({
         discoveryMode: currentCandidate?.discoveryMode
       });
 
-      // PONTO 2 MCR Funnel: Record DISCOVERY stage with discoveryOrigin
+      // PONTO 2 MCR Funnel: Record IMPRESSION stage with discoveryOrigin
       const origin = currentCandidate?.discoveryMode || 'VALUES_AFFINITY';
       connectionGraph.recordFunnelEvent({
         userId: myProfile.uid,
         targetUid: targetProfile.uid,
-        stage: 'DISCOVERY',
+        stage: 'IMPRESSION',
         countryPair: [myProfile.countryCode, targetProfile.countryCode],
         discoveryOrigin: origin,
         metadata: {
@@ -239,6 +242,23 @@ export const Discover: React.FC<DiscoverProps> = ({
       });
     }
   }, [targetProfile?.uid, myProfile?.uid]);
+
+  // Track QUALIFIED_DISCOVERY when user spends time or interacts with progressive revelation
+  const trackQualifiedDiscovery = () => {
+    if (!targetProfile || !myProfile?.uid) return;
+    const origin = currentCandidate?.discoveryMode || 'VALUES_AFFINITY';
+    connectionGraph.recordFunnelEvent({
+      userId: myProfile.uid,
+      targetUid: targetProfile.uid,
+      stage: 'QUALIFIED_DISCOVERY',
+      countryPair: [myProfile.countryCode, targetProfile.countryCode],
+      discoveryOrigin: origin,
+      metadata: {
+        discoveryOrigin: origin,
+        revelationStep: activeStep
+      }
+    });
+  };
 
   // Reset revelation step on candidate switch
   useEffect(() => {
@@ -304,6 +324,21 @@ export const Discover: React.FC<DiscoverProps> = ({
       contextReason: reasonToUse,
       discoveryMode: currentCandidate.discoveryMode
     });
+
+    // PONTO 2 MCR Funnel: Record INTENTIONAL_INTEREST stage
+    if (targetProfile) {
+      connectionGraph.recordFunnelEvent({
+        userId: myProfile.uid,
+        targetUid: targetProfile.uid,
+        stage: 'INTENTIONAL_INTEREST',
+        countryPair: [myProfile.countryCode, targetProfile.countryCode],
+        discoveryOrigin: currentCandidate.discoveryMode || 'VALUES_AFFINITY',
+        metadata: {
+          discoveryOrigin: currentCandidate.discoveryMode,
+          contextReason: reasonToUse
+        }
+      });
+    }
 
     onLike(currentCandidate, contextText, true);
   };
@@ -431,6 +466,9 @@ export const Discover: React.FC<DiscoverProps> = ({
         : currentCandidate.discoveryMode === 'DEEP_CONVERSATION'
           ? 'Diálogo Profundo'
           : 'Sintonia Autêntica';
+
+  // Relational Memory Evaluation (Pessoa + Contexto + Comportamento + Reciprocidade + Resultado)
+  const conditionFitness = relationalMemory.evaluateConditionFit(myProfile, currentCandidate);
 
   return (
     <div id="discover-single-card-view" className="flex-1 flex flex-col max-w-lg mx-auto w-full p-4 pb-24 space-y-4">
@@ -632,6 +670,40 @@ export const Discover: React.FC<DiscoverProps> = ({
         </div>
 
         <div className="p-4 sm:p-5 space-y-4">
+          {/* RELATIONAL MEMORY: FERTILE CONDITIONS FIT BANNER */}
+          {conditionFitness.fitnessScore >= 0.65 && (
+            <div
+              id="relational-memory-fit-callout"
+              className="p-3.5 bg-gradient-to-br from-rose-500/10 via-amber-500/10 to-purple-500/10 border border-rose-200/90 rounded-xl space-y-2 shadow-2xs"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-rose-950 flex items-center gap-1.5 font-serif">
+                  <Brain className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span>Memória Relacional · {Math.round(conditionFitness.fitnessScore * 100)}% de Fertilidade</span>
+                </span>
+                <span className="text-[9px] font-bold text-rose-800 bg-white/90 px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs uppercase tracking-wider">
+                  Condições Férteis
+                </span>
+              </div>
+              <p className="text-xs text-stone-800 leading-relaxed font-sans font-medium">
+                "{conditionFitness.fertileReasoning}"
+              </p>
+              {conditionFitness.matchedConditions.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {conditionFitness.matchedConditions.map((cond, cIdx) => (
+                    <span
+                      key={cIdx}
+                      className="inline-flex items-center gap-1 text-[10px] font-semibold bg-white/95 px-2 py-0.5 rounded-md border border-rose-200/80 text-stone-800 shadow-2xs"
+                    >
+                      <Check className="w-2.5 h-2.5 text-emerald-600" />
+                      <span>{cond}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* SERENDIPITY SPECIAL CALLOUT (DESCOBERTA INESPERADA) */}
           {(currentCandidate.discoveryMode === 'SERENDIPITY' || currentCandidate.serendipityInsight) && (
             <div
@@ -950,11 +1022,13 @@ export const Discover: React.FC<DiscoverProps> = ({
                   exit={{ opacity: 0, y: -4 }}
                   className="relative aspect-4/3 w-full rounded-xl overflow-hidden bg-stone-100 border border-stone-200"
                 >
-                  <img
-                    src={dataSaver.getOptimizedImageUrl(targetProfile.profilePhoto)}
+                  <OptimizedImage
+                    src={targetProfile.profilePhoto}
                     alt={targetProfile.displayName}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
+                    variant="card"
+                    aspectRatio="auto"
+                    showSavingsBadge={true}
+                    className="w-full h-full"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
                   <div className="absolute bottom-3 left-3 right-3 text-white flex items-center justify-between">

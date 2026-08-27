@@ -105,7 +105,28 @@ service cloud.firestore {
       allow update, delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
-    // 12. Admin & Moderation Access
+    // 12. Trust Graph & Secure Evidence Validation
+    match /trust_signals/{userId} {
+      allow read, write: if false; // Strictly private - backend & admin authority only
+    }
+
+    match /trust_evaluations/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId; // User can inspect own private status
+      allow write: if false; // Prohibit client mutation
+    }
+
+    match /public_trust_badges/{userId} {
+      allow read: if true; // Public minimal badges
+      allow write: if false; // Server/Admin authority only - client cannot spoof
+    }
+
+    match /verification_requests/{requestId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.userId);
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false; // Decisions are strictly backend/admin moderated
+    }
+
+    // 13. Admin & Moderation Access
     match /admins/{adminId} {
       allow read: if true;
       allow write: if true; // Guarded by cryptographic PIN verification in applet logic

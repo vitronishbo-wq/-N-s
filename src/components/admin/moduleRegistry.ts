@@ -96,12 +96,14 @@ export const CONTROL_MODULES: ControlModuleDefinition[] = [
     id: 'trust',
     title: 'CONFIANÇA · Moderação & Segurança',
     shortTitle: 'CONFIANÇA',
-    description: 'Fila de moderação auditada: Signal → Review → Decision → Action → Audit.',
+    description: 'Fila de moderação auditada & Trust Graph: Evidência → Validação → Sinais Privados → Política → Badges Públicos.',
     category: 'trust',
     icon: ShieldCheck,
     requiredPermission: 'trust:signal:read',
     submodules: [
       { id: 'denuncias', title: 'Denúncias', shortTitle: 'Denúncias' },
+      { id: 'verificacoes', title: 'Verificações (Evidências)', shortTitle: 'Verificações' },
+      { id: 'trust_graph', title: 'Trust Graph & Badges', shortTitle: 'Trust Graph' },
       { id: 'moderacao', title: 'Moderação', shortTitle: 'Moderação' },
       { id: 'restricoes', title: 'Restrições', shortTitle: 'Restrições' },
       { id: 'bloqueios', title: 'Bloqueios', shortTitle: 'Bloqueios' },
@@ -135,6 +137,7 @@ export const CONTROL_MODULES: ControlModuleDefinition[] = [
     requiredPermission: 'product:flags:read',
     submodules: [
       { id: 'motor', title: 'Motor', shortTitle: 'Motor' },
+      { id: 'mcr', title: 'MCR (North Star)', shortTitle: 'MCR' },
       { id: 'disponibilidade', title: 'Disponibilidade', shortTitle: 'Disponibilidade' },
       { id: 'expansao', title: 'Expansão', shortTitle: 'Expansão' },
       { id: 'ranking', title: 'Ranking', shortTitle: 'Ranking' },
@@ -201,6 +204,7 @@ export const CONTROL_MODULES: ControlModuleDefinition[] = [
     requiredPermission: 'engineering:metrics:read',
     submodules: [
       { id: 'saude', title: 'Saúde do Sistema', shortTitle: 'Saúde' },
+      { id: 'data_saver', title: 'Data Saver & Resiliência CPLP', shortTitle: 'Data Saver' },
       { id: 'versoes', title: 'Versões', shortTitle: 'Versões' },
       { id: 'deployments', title: 'Deployments', shortTitle: 'Deployments' },
       { id: 'erros', title: 'Erros & Exceções', shortTitle: 'Erros' },

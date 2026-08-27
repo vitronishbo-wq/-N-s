@@ -4,7 +4,15 @@ import { TrustService } from '../../../services/admin/trustService';
 import { RbacService } from '../../../services/admin/rbacService';
 import { TaskService } from '../../../services/admin/taskService';
 import { AuditService } from '../../../services/admin/auditService';
-import { TrustReview, TrustDecisionOutcome } from '../../../types';
+import { trustGraph, TRUST_ELIGIBILITY_POLICIES } from '../../../services/trustGraph';
+import {
+  TrustReview,
+  TrustDecisionOutcome,
+  TrustVerificationRequest,
+  TrustEvidenceType,
+  TrustBadgeType,
+  UserProfile
+} from '../../../types';
 import {
   ShieldAlert,
   CheckCircle2,
@@ -21,7 +29,17 @@ import {
   ChevronRight,
   Shield,
   Search,
-  Check
+  Check,
+  ShieldCheck,
+  Sparkles,
+  HeartHandshake,
+  Zap,
+  Layers,
+  FileCheck,
+  KeyRound,
+  XCircle,
+  HelpCircle,
+  Cpu
 } from 'lucide-react';
 
 interface ActiveRestriction {
@@ -82,12 +100,133 @@ export const TrustModule: React.FC<ModuleProps & { activeSubmoduleId?: string }>
   const [restrictions, setRestrictions] = useState<ActiveRestriction[]>(INITIAL_RESTRICTIONS);
   const [blocks, setBlocks] = useState<ActiveBlock[]>(INITIAL_BLOCKS);
 
+  // Trust Graph Verification & Simulation State
+  const [verificationRequests, setVerificationRequests] = useState<TrustVerificationRequest[]>(() =>
+    trustGraph.getVerificationRequests()
+  );
+  const [selectedVerifReq, setSelectedVerifReq] = useState<TrustVerificationRequest | null>(null);
+  const [verifDecisionJustification, setVerifDecisionJustification] = useState('');
+  const [verifFilter, setVerifFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+
+  // Simulation Profile for Trust Graph Simulator
+  const [simProfileBio, setSimProfileBio] = useState('Apaixonado por literatura angolana e música lusófona. Busco conexões sérias e amizades genuínas.');
+  const [simPhotoCount, setSimPhotoCount] = useState(3);
+  const [simHasVerifiedId, setSimHasVerifiedId] = useState(true);
+  const [simSafetyTenureDays, setSimSafetyTenureDays] = useState(14);
+  const [simViolations, setSimViolations] = useState(0);
+  const [simReciprocalDialogue, setSimReciprocalDialogue] = useState(4);
+  const [simIsOnline, setSimIsOnline] = useState(true);
+
   const canDecide = rbac.can(currentAdmin, 'trust:decision');
   const canReview = rbac.can(currentAdmin, 'trust:review');
 
   const reload = () => {
     setReviews(trustService.getReviews());
+    setVerificationRequests(trustGraph.getVerificationRequests());
   };
+
+  const handleApproveVerification = (req: TrustVerificationRequest) => {
+    if (!canDecide) {
+      alert('Permissão insuficiente para aprovar verificação formal.');
+      return;
+    }
+    const just = verifDecisionJustification.trim() || 'Documento e biometria conferidos de acordo com as normas CPLP.';
+    const res = trustGraph.reviewVerificationRequest(
+      req.id,
+      'approved',
+      currentAdmin.displayName || currentAdmin.name || 'Admin',
+      just
+    );
+    if (res.success) {
+      AuditService.getInstance().logEvent(currentAdmin, {
+        module: 'trust',
+        resourceType: 'verification_request',
+        resourceId: req.id,
+        action: 'APPROVE_IDENTITY_VERIFICATION',
+        justification: just
+      });
+      setSelectedVerifReq(null);
+      setVerifDecisionJustification('');
+      reload();
+    } else {
+      alert(res.error);
+    }
+  };
+
+  const handleRejectVerification = (req: TrustVerificationRequest) => {
+    if (!canDecide) {
+      alert('Permissão insuficiente para rejeitar verificação formal.');
+      return;
+    }
+    const just = verifDecisionJustification.trim() || 'Documento ilegível ou dados divergentes do registo.';
+    const res = trustGraph.reviewVerificationRequest(
+      req.id,
+      'rejected',
+      currentAdmin.displayName || currentAdmin.name || 'Admin',
+      just
+    );
+    if (res.success) {
+      AuditService.getInstance().logEvent(currentAdmin, {
+        module: 'trust',
+        resourceType: 'verification_request',
+        resourceId: req.id,
+        action: 'REJECT_IDENTITY_VERIFICATION',
+        justification: just
+      });
+      setSelectedVerifReq(null);
+      setVerifDecisionJustification('');
+      reload();
+    } else {
+      alert(res.error);
+    }
+  };
+
+  const simulatedEvaluation = React.useMemo(() => {
+    const mockProfile: UserProfile = {
+      uid: 'sim_user_test',
+      displayName: 'Membro Teste',
+      age: 28,
+      gender: 'man',
+      intent: 'serious',
+      interests: ['Literatura', 'Música', 'Gastronomia'],
+      bio: simProfileBio,
+      profilePhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+      photos: Array(simPhotoCount).fill('https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400'),
+      countryCode: 'AO',
+      countryName: 'Angola',
+      cityName: 'Luanda',
+      culturalBackground: 'Cultura Kimbundu e tradições atlânticas',
+      verificationStatus: simHasVerifiedId ? 'verified' : 'unverified',
+      visibility: 'public',
+      online: simIsOnline,
+      lastActive: Date.now(),
+      createdAt: Date.now() - simSafetyTenureDays * 86400000,
+      updatedAt: Date.now()
+    };
+
+    return trustGraph.evaluateTrust(
+      mockProfile,
+      {
+        uid: 'sim_user_test',
+        totalSeen: 20,
+        totalLikes: 10,
+        totalPasses: 10,
+        conversations: simReciprocalDialogue,
+        meaningfulInteractions: Math.floor(simReciprocalDialogue / 2),
+        lastInteractionTimestamp: Date.now()
+      } as any,
+      simViolations,
+      0
+    );
+  }, [
+    simProfileBio,
+    simPhotoCount,
+    simHasVerifiedId,
+    simSafetyTenureDays,
+    simViolations,
+    simReciprocalDialogue,
+    simIsOnline
+  ]);
 
   const handleAssignToSelf = (reviewId: string) => {
     if (trustService.assignReview(reviewId, currentAdmin)) {
@@ -394,6 +533,468 @@ export const TrustModule: React.FC<ModuleProps & { activeSubmoduleId?: string }>
                   Selecione uma denúncia da lista para abrir a área de trabalho de deliberação.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBMODULE: VERIFICAÇÕES (EVIDÊNCIAS DE IDENTIDADE) */}
+      {currentTab === 'verificacoes' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                  EVIDÊNCIA & VALIDAÇÃO SEGURA
+                </span>
+                <span className="text-xs text-stone-700 font-medium">Verificação Formal de Identidade CPLP</span>
+              </div>
+              <h3 className="text-base font-bold text-stone-900 mt-1">Fila de Evidências & Provas de Identidade</h3>
+              <p className="text-xs text-stone-700 mt-0.5">
+                Validação estrita de documentos oficiais e biometria liveness. Decisões gravadas no log de auditoria.
+              </p>
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-xl border border-stone-200 self-start sm:self-auto">
+              {(['all', 'pending', 'approved', 'rejected'] as const).map(f => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setVerifFilter(f)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                    verifFilter === f ? 'bg-white text-stone-900 shadow-2xs font-bold' : 'text-stone-700 hover:text-stone-900'
+                  }`}
+                >
+                  {f === 'all' ? 'Todas' : f === 'pending' ? 'Pendentes' : f === 'approved' ? 'Aprovadas' : 'Rejeitadas'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Requests List */}
+            <div className="lg:col-span-6 space-y-3">
+              {verificationRequests
+                .filter(r => (verifFilter === 'all' ? true : r.status === verifFilter))
+                .map(req => (
+                  <div
+                    key={req.id}
+                    className={`p-4 rounded-xl border transition cursor-pointer ${
+                      selectedVerifReq?.id === req.id
+                        ? 'bg-emerald-50/50 border-emerald-300 shadow-2xs'
+                        : 'bg-white border-stone-200 hover:border-stone-300'
+                    }`}
+                    onClick={() => setSelectedVerifReq(req)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-xs text-stone-900">Req #{req.id}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                          req.status === 'approved'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : req.status === 'rejected'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {req.status === 'approved' ? 'Aprovado' : req.status === 'rejected' ? 'Rejeitado' : 'Pendente'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-stone-700 font-mono">
+                        {new Date(req.submittedAt).toLocaleDateString('pt-PT')}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-xs">
+                      <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{req.userName}</span>
+                        <span className="text-stone-700 font-normal">({req.userCountry})</span>
+                      </div>
+                      <div className="text-stone-700 mt-1 flex items-center gap-2">
+                        <span className="bg-stone-100 px-2 py-0.5 rounded text-[10px] font-mono">
+                          {req.evidenceType}
+                        </span>
+                        <span className="text-[10px] text-stone-700 font-mono truncate max-w-[200px]">
+                          {req.documentHash}
+                        </span>
+                      </div>
+                    </div>
+
+                    {req.reviewedBy && (
+                      <div className="mt-2.5 pt-2 border-t border-stone-100 text-[11px] text-stone-700 flex items-center justify-between">
+                        <span>Revisto por: <strong className="text-stone-700">{req.reviewedBy}</strong></span>
+                        <span className="text-stone-700">{req.justification}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+
+            {/* Deliberation Detail Panel */}
+            <div className="lg:col-span-6">
+              {selectedVerifReq ? (
+                <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-2xs space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+                    <h4 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Análise de Evidência #{selectedVerifReq.id}
+                    </h4>
+                    <span className="text-xs text-stone-700 font-mono">
+                      UID: {selectedVerifReq.userId}
+                    </span>
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-stone-700">Utilizador:</span>
+                      <span className="font-bold text-stone-900">{selectedVerifReq.userName}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-700">País de Emissão:</span>
+                      <span className="font-bold text-stone-900">{selectedVerifReq.userCountry}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-700">Tipo de Prova:</span>
+                      <span className="font-mono text-stone-900 font-bold">{selectedVerifReq.evidenceType}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-700">Hash de Validação:</span>
+                      <span className="font-mono text-[11px] text-stone-700">{selectedVerifReq.documentHash}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-stone-700">Estado Atual:</span>
+                      <span className="font-bold text-emerald-700 uppercase">{selectedVerifReq.status}</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                    <div className="font-bold flex items-center gap-1.5 mb-0.5">
+                      <Lock className="w-3.5 h-3.5 text-amber-700" />
+                      Princípio de Autoridade Backend
+                    </div>
+                    O utilizador não pode atribuir o seu próprio badge. A aprovação desta evidência emite o badge público formal através do motor seguro de Trust.
+                  </div>
+
+                  {selectedVerifReq.status === 'pending' && (
+                    <div className="space-y-3 pt-2">
+                      <div>
+                        <label className="text-xs font-bold text-stone-800 block mb-1">
+                          Justificação da Decisão (Registo de Auditoria):
+                        </label>
+                        <input
+                          type="text"
+                          value={verifDecisionJustification}
+                          onChange={e => setVerifDecisionJustification(e.target.value)}
+                          placeholder="Ex: Documento de identidade de Angola validado com sucesso"
+                          className="w-full p-2.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:outline-emerald-600"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => handleRejectVerification(selectedVerifReq)}
+                          className="px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold rounded-xl cursor-pointer"
+                        >
+                          Rejeitar Pedido
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleApproveVerification(selectedVerifReq)}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-2xs flex items-center gap-1.5"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Aprovar & Emitir Selo</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl p-12 border border-stone-200 text-center text-xs text-stone-700">
+                  Selecione um pedido de verificação para inspecionar os detalhes e deliberar.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBMODULE: TRUST GRAPH & POLÍTICAS */}
+      {currentTab === 'trust_graph' && (
+        <div className="space-y-6">
+          {/* Architecture Banner */}
+          <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                  ARQUITETURA DE CONFIANÇA
+                </span>
+                <h3 className="text-base font-bold text-stone-900 mt-1">Fluxo do Trust Graph ÉNós</h3>
+              </div>
+              <span className="text-xs font-mono text-stone-700 bg-stone-100 px-2.5 py-1 rounded-lg border border-stone-200">
+                Modelo Não-Punitivo & Sem Score Público
+              </span>
+            </div>
+
+            {/* 5-Step Visual Pipeline */}
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 pt-2">
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-center space-y-1">
+                <div className="text-[10px] font-bold text-stone-700 uppercase">1. EVIDÊNCIA</div>
+                <div className="text-xs font-bold text-stone-900">Documentos & Atos</div>
+                <p className="text-[10px] text-stone-700">Biometria, diálogo recíproco e histórico</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-center space-y-1">
+                <div className="text-[10px] font-bold text-stone-700 uppercase">2. VALIDAÇÃO</div>
+                <div className="text-xs font-bold text-stone-900">Backend Authority</div>
+                <p className="text-[10px] text-stone-700">Sem autoridade do frontend; regras seguras</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-center space-y-1">
+                <div className="text-[10px] font-bold text-stone-700 uppercase">3. SINAIS PRIVADOS</div>
+                <div className="text-xs font-bold text-stone-900">Multidimensional</div>
+                <p className="text-[10px] text-stone-700">Sem trust score público ou manipulável</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-stone-50 border border-stone-200 text-center space-y-1">
+                <div className="text-[10px] font-bold text-stone-700 uppercase">4. ELEGIBILIDADE</div>
+                <div className="text-xs font-bold text-stone-900">Políticas Formais</div>
+                <p className="text-[10px] text-stone-700">Critérios determinísticos e auditáveis</p>
+              </div>
+
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-center space-y-1">
+                <div className="text-[10px] font-bold text-emerald-800 uppercase">5. BADGES PÚBLICOS</div>
+                <div className="text-xs font-bold text-emerald-900">Distintivos Mínimos</div>
+                <p className="text-[10px] text-emerald-800">Apenas reconhecimento positivo e dignidade</p>
+              </div>
+            </div>
+
+            {/* 5 Core Directives Card */}
+            <div className="p-4 rounded-xl bg-stone-900 text-white space-y-2 text-xs">
+              <div className="font-bold text-rose-400 flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5" />
+                <span>5 Princípios Inegociáveis do Trust Graph:</span>
+              </div>
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-stone-300 text-[11px] list-disc list-inside">
+                <li><strong>O utilizador não pode atribuir o próprio badge</strong> (requer evidência backend).</li>
+                <li><strong>O frontend não é a autoridade</strong> (validação e cálculo ocorrem no servidor).</li>
+                <li><strong>Sem trust score manipulável</strong> (evita gamificação e julgamento superficial).</li>
+                <li><strong>Decisões auditáveis</strong> (cada concessão fica registada em logs imutáveis).</li>
+                <li><strong>Anti-Humilhação</strong> (feedback negativo nunca gera sistema de vergonha pública).</li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Formal Eligibility Policies Cards */}
+          <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-2xs space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-stone-900">Políticas Formais de Elegibilidade de Badges</h3>
+              <p className="text-xs text-stone-700 mt-0.5">
+                Critérios objetivos para a concessão automática e manual dos 5 distintivos públicos da Lusofonia.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {Object.values(TRUST_ELIGIBILITY_POLICIES).map(policy => (
+                <div key={policy.badgeType} className="p-4 rounded-xl bg-stone-50 border border-stone-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
+                      {policy.badgeType === 'identity_verified' && <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />}
+                      {policy.badgeType === 'authentic_profile' && <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                      {policy.badgeType === 'trusted_member' && <UserCheck className="w-3.5 h-3.5 text-blue-600" />}
+                      {policy.badgeType === 'respectful_dialogue' && <HeartHandshake className="w-3.5 h-3.5 text-purple-600" />}
+                      {policy.badgeType === 'active_presence' && <Zap className="w-3.5 h-3.5 text-rose-500" />}
+                      <span>{policy.title}</span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Público
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-stone-700 leading-snug">{policy.description}</p>
+
+                  <div className="pt-2 border-t border-stone-200 text-[11px] space-y-1">
+                    <div>
+                      <span className="font-semibold text-stone-800">Critério: </span>
+                      <span className="text-stone-700">{policy.criteriaSummary}</span>
+                    </div>
+                    <div>
+                      <span className="font-semibold text-stone-800">Dignidade Garantida: </span>
+                      <span className="text-emerald-700 font-bold">Sim (Não-punitivo)</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Interactive Policy Simulator */}
+          <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                  <Cpu className="w-4 h-4 text-rose-600" />
+                  Simulador Interativo de Elegibilidade do Trust Graph
+                </h3>
+                <p className="text-xs text-stone-700 mt-0.5">
+                  Teste em tempo real como o motor de regras avalia as evidências e emite os badges públicos.
+                </p>
+              </div>
+              <span className="text-xs font-mono font-bold text-stone-700 bg-stone-100 px-3 py-1 rounded-xl">
+                Modo Sandbox
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
+              {/* Simulation Controls */}
+              <div className="lg:col-span-6 space-y-3.5 p-4 rounded-xl bg-stone-50 border border-stone-200">
+                <div>
+                  <label className="text-xs font-bold text-stone-800 block mb-1">
+                    Bio do Perfil (Comprimento: {simProfileBio.length} chars)
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={simProfileBio}
+                    onChange={e => setSimProfileBio(e.target.value)}
+                    className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Nº de Fotos:</label>
+                    <select
+                      value={simPhotoCount}
+                      onChange={e => setSimPhotoCount(Number(e.target.value))}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg"
+                    >
+                      <option value={1}>1 Foto (Básica)</option>
+                      <option value={2}>2 Fotos (Válida)</option>
+                      <option value={4}>4+ Fotos (Rica)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Identidade Verificada:</label>
+                    <select
+                      value={simHasVerifiedId ? 'yes' : 'no'}
+                      onChange={e => setSimHasVerifiedId(e.target.value === 'yes')}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg"
+                    >
+                      <option value="yes">Sim (Documento Validado)</option>
+                      <option value="no">Não (Pendente)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Idade da Conta (Dias):</label>
+                    <input
+                      type="number"
+                      value={simSafetyTenureDays}
+                      onChange={e => setSimSafetyTenureDays(Number(e.target.value))}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Violações de Segurança:</label>
+                    <input
+                      type="number"
+                      value={simViolations}
+                      onChange={e => setSimViolations(Number(e.target.value))}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Diálogos Recíprocos:</label>
+                    <input
+                      type="number"
+                      value={simReciprocalDialogue}
+                      onChange={e => setSimReciprocalDialogue(Number(e.target.value))}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-stone-800 block mb-1">Estado Online:</label>
+                    <select
+                      value={simIsOnline ? 'yes' : 'no'}
+                      onChange={e => setSimIsOnline(e.target.value === 'yes')}
+                      className="w-full p-2 text-xs bg-white border border-stone-200 rounded-lg"
+                    >
+                      <option value="yes">Online / Recente</option>
+                      <option value="no">Inativo</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Simulation Result */}
+              <div className="lg:col-span-6 space-y-3.5 p-4 rounded-xl bg-stone-50 border border-stone-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
+                    Resultado da Avaliação Backend
+                  </span>
+                  <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                    {simulatedEvaluation.evaluatorAuthority}
+                  </span>
+                </div>
+
+                {/* Badges Emitidos */}
+                <div className="space-y-1.5">
+                  <span className="text-xs font-bold text-stone-900 block">Badges Públicos Concedidos:</span>
+                  {simulatedEvaluation.eligibleBadges.length === 0 ? (
+                    <div className="p-3 bg-white rounded-lg border border-stone-200 text-xs text-stone-700">
+                      Nenhum badge público emitido (critérios não atingidos ou violações pendentes).
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {simulatedEvaluation.eligibleBadges.map((b, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-stone-200 rounded-xl shadow-2xs text-xs font-bold text-stone-900"
+                        >
+                          <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                          <span>{b.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Sinais Privados */}
+                <div className="pt-2 border-t border-stone-200 space-y-1 text-xs">
+                  <span className="font-bold text-stone-900 block text-[11px] uppercase tracking-wider">
+                    Sinais Privados Multidimensionais:
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-stone-700 bg-white p-2.5 rounded-lg border border-stone-200">
+                    <div>Identidade: <strong className="text-stone-900">{simulatedEvaluation.signals.identityEvidenceLevel}</strong></div>
+                    <div>Autenticidade: <strong className="text-stone-900">{simulatedEvaluation.signals.profileAuthenticityLevel}</strong></div>
+                    <div>Tenure Segurança: <strong className="text-stone-900">{simulatedEvaluation.signals.safetyTenureDays}d</strong></div>
+                    <div>Violações: <strong className={simViolations > 0 ? 'text-red-600' : 'text-stone-900'}>{simViolations}</strong></div>
+                  </div>
+                </div>
+
+                {/* Anti-humiliation Note */}
+                {simViolations > 0 && (
+                  <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2">
+                    <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold">Garantia Anti-Humilhação</div>
+                      <p className="text-[11px] text-rose-800">
+                        O utilizador teve os badges retidos internamente, mas o seu perfil público NÃO exibe selos negativos, rótulos de punição ou notas depreciativas.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

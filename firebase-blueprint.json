@@ -58,6 +58,31 @@
         "countryCode": { "type": "string" }
       },
       "required": ["id", "role"]
+    },
+    "PublicTrustBadges": {
+      "title": "PublicTrustBadges",
+      "description": "Backend-validated minimal public trust badges",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "badges": { "type": "array" },
+        "issuedByAuthority": { "type": "string" },
+        "evaluatedAt": { "type": "number" }
+      },
+      "required": ["userId", "badges"]
+    },
+    "VerificationRequest": {
+      "title": "VerificationRequest",
+      "description": "User identity verification request with proof documents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "evidenceType": { "type": "string" },
+        "status": { "type": "string" },
+        "submittedAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "evidenceType", "status"]
     }
   },
   "firestore": {
@@ -76,6 +101,14 @@
     "/admins/{adminId}": {
       "schema": "AdminUser",
       "description": "Administrative access profiles and roles"
+    },
+    "/public_trust_badges/{userId}": {
+      "schema": "PublicTrustBadges",
+      "description": "Server-authorized public trust badges"
+    },
+    "/verification_requests/{requestId}": {
+      "schema": "VerificationRequest",
+      "description": "Identity verification submission queue"
     }
   }
 }

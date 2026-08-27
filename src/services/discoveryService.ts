@@ -23,6 +23,7 @@ import { CandidateDiversityGuard, defaultDiversityGuard } from './diversityGuard
 import { DiscoveryExpansionPolicy, defaultExpansionPolicy } from './expansionPolicy';
 import { recordSignalEvent } from './signals';
 import { connectionGraph } from './connectionGraph';
+import { relationalMemory } from './relationalMemory';
 import { trustGraph } from './trustGraph';
 import { dataSaver } from './dataSaverService';
 import { db, doc, setDoc } from '../firebase/config';
@@ -683,15 +684,23 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       const modeConvs = signals?.conversationReasonTypes?.[c.discoveryMode] || 0;
       const signalLearningBonus = Math.min(0.15, (modeLikes * 0.02) + (modeConvs * 0.04));
 
+      // 8. Relational Condition Fitness (Pessoa + Contexto + Comportamento + Reciprocidade + Resultado)
+      let relationalFitnessBonus = 0;
+      if (myProfile) {
+        const fitnessEval = relationalMemory.evaluateConditionFit(myProfile, c);
+        relationalFitnessBonus = fitnessEval.fitnessScore * 0.15; // Up to 15% boost for high fertile condition alignment
+      }
+
       // Weighted Heuristic:
-      // Conversation Potential (0.38) + Cultural Connection (0.32) = 0.70 (70% Reason-First)
-      // Basic Profile Similarity (0.14) + Surprise (0.10) + Diversity (0.06) = 0.30
+      // Conversation Potential (0.35) + Cultural Connection (0.30) + Relational Condition Fitness (0.15)
+      // Basic Profile Similarity (0.10) + Surprise (0.06) + Diversity (0.04)
       const finalCompositeRank =
-        conversationPotential * 0.38 +
-        culturalConnection * 0.32 +
-        relevance * 0.14 +
-        surprise * 0.10 +
-        diversity * 0.06 +
+        conversationPotential * 0.35 +
+        culturalConnection * 0.30 +
+        relationalFitnessBonus +
+        relevance * 0.10 +
+        surprise * 0.06 +
+        diversity * 0.04 +
         signalLearningBonus;
 
       const prioritizationScore: ContextualPrioritizationScore = {
@@ -970,13 +979,16 @@ export class DiscoveryAppService {
       });
     }
 
-    // PONTO 1: Record MCR Funnel Events (MUTUAL_INTEREST & CONVERSATION_INITIATED)
+    // PONTO 1 & PONTO 2: Record MCR Funnel Events (MUTUAL_INTEREST & CONVERSATION_INITIATED)
+    const origin = targetCandidate.discoveryMode || 'VALUES_AFFINITY';
     connectionGraph.recordFunnelEvent({
       userId: myProfile.uid,
       targetUid: target.uid,
       stage: 'MUTUAL_INTEREST',
       countryPair: [myProfile.countryCode, target.countryCode],
+      discoveryOrigin: origin,
       metadata: {
+        discoveryOrigin: origin,
         discoveryMode: targetCandidate.discoveryMode,
         isSerendipitous: targetCandidate.discoveryMode === 'SERENDIPITY'
       }
@@ -992,7 +1004,10 @@ export class DiscoveryAppService {
       targetUid: target.uid,
       stage: 'CONVERSATION_INITIATED',
       countryPair: [myProfile.countryCode, target.countryCode],
+      discoveryOrigin: origin,
       metadata: {
+        discoveryOrigin: origin,
+        discoveryMode: targetCandidate.discoveryMode,
         icebreakerUsed: !!customContextText
       }
     });

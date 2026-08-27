@@ -76,6 +76,128 @@ app.post('/api/moderation/check', async (req, res) => {
   }
 });
 
+// PONTO 3: Backend Trust Graph Policies & Evaluation Endpoints
+app.get('/api/trust/policies', (req, res) => {
+  const policies = {
+    identity_verified: {
+      badgeType: 'identity_verified',
+      title: 'Identidade Verificada',
+      criteriaSummary: 'Prova oficial de documento governamental ou biometria liveness; 0 violações.',
+      dignityGuaranteed: true
+    },
+    authentic_profile: {
+      badgeType: 'authentic_profile',
+      title: 'Perfil Autêntico',
+      criteriaSummary: 'Bio expressiva (>30 chars), múltiplas fotos genuínas e transparência cultural.',
+      dignityGuaranteed: true
+    },
+    trusted_member: {
+      badgeType: 'trusted_member',
+      title: 'Membro Confiável',
+      criteriaSummary: 'Permanência ativa ≥ 7 dias, histórico limpo e zero incidentes de segurança.',
+      dignityGuaranteed: true
+    },
+    respectful_dialogue: {
+      badgeType: 'respectful_dialogue',
+      title: 'Diálogo Respeitoso',
+      criteriaSummary: 'Múltiplas conversas com reciprocidade comprovada e zero denúncias aceites.',
+      dignityGuaranteed: true
+    },
+    active_presence: {
+      badgeType: 'active_presence',
+      title: 'Presença Ativa',
+      criteriaSummary: 'Atividade e prontidão recente na comunidade CPLP.',
+      dignityGuaranteed: true
+    }
+  };
+  res.json({ policies });
+});
+
+app.post('/api/trust/evaluate', (req, res) => {
+  try {
+    const { profile, evidences, signals, confirmedSafetyViolations, activeDisputes } = req.body;
+    if (!profile || !profile.uid) {
+      return res.status(400).json({ error: 'Missing profile object or uid' });
+    }
+
+    const violations = confirmedSafetyViolations || 0;
+    const disputes = activeDisputes || 0;
+    const validEvidences = Array.isArray(evidences) ? evidences : [];
+
+    const hasVerifiedId = profile.verificationStatus === 'verified' || validEvidences.some((e: any) => e.type === 'national_id_verification' || e.type === 'passport_verification');
+    const isAuthentic = Boolean(profile.bio && profile.bio.trim().length >= 30 && profile.photos && profile.photos.length >= 2);
+    const accountAgeDays = Math.max(1, Math.floor((Date.now() - (profile.createdAt || Date.now() - 86400000 * 14)) / (1000 * 60 * 60 * 24)));
+    const hasTenure = accountAgeDays >= 7 && violations === 0 && disputes === 0;
+    const hasDialogue = (signals?.conversations || 0) >= 1 && violations === 0 && disputes === 0;
+
+    const badges = [];
+
+    if (hasVerifiedId && violations === 0) {
+      badges.push({
+        type: 'identity_verified',
+        label: 'Identidade Verificada',
+        description: 'Identidade e titularidade do perfil validadas de forma segura',
+        iconName: 'ShieldCheck',
+        issuedByAuthority: 'Autoridade de Verificação CPLP',
+        grantedAt: profile.createdAt || Date.now()
+      });
+    }
+
+    if (isAuthentic && violations === 0) {
+      badges.push({
+        type: 'authentic_profile',
+        label: 'Perfil Autêntico',
+        description: 'Apresentação genuína, transparente e contextualizada na comunidade',
+        iconName: 'Sparkles',
+        issuedByAuthority: 'Motor de Autenticidade ÉNós',
+        grantedAt: profile.createdAt || Date.now()
+      });
+    }
+
+    if (hasTenure) {
+      badges.push({
+        type: 'trusted_member',
+        label: 'Membro Confiável',
+        description: 'Histórico consistente de respeito e integridade na comunidade CPLP',
+        iconName: 'UserCheck',
+        issuedByAuthority: 'Conselho de Confiabilidade CPLP',
+        grantedAt: profile.createdAt || Date.now()
+      });
+    }
+
+    if (hasDialogue) {
+      badges.push({
+        type: 'respectful_dialogue',
+        label: 'Diálogo Respeitoso',
+        description: 'Reconhecido por conduta respeitosa, acolhedora e recíproca',
+        iconName: 'HeartHandshake',
+        issuedByAuthority: 'Observatório de Diálogo ÉNós',
+        grantedAt: profile.createdAt || Date.now()
+      });
+    }
+
+    if (profile.online && violations === 0) {
+      badges.push({
+        type: 'active_presence',
+        label: 'Presença Ativa',
+        description: 'Membro com prontidão e participação recente na comunidade',
+        iconName: 'Zap',
+        issuedByAuthority: 'Presença Ativa Lusofonia',
+        grantedAt: Date.now()
+      });
+    }
+
+    res.json({
+      userId: profile.uid,
+      badges,
+      evaluatedAt: Date.now(),
+      evaluatorAuthority: 'enos_backend_trust_engine'
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to evaluate trust graph' });
+  }
+});
+
 // Serve frontend in dev (via vite middleware) or static in production
 async function initServer() {
   if (process.env.NODE_ENV !== 'production') {

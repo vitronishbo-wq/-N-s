@@ -11,8 +11,10 @@ import {
 import { CPLP_COUNTRY_LIST, RELATIONSHIP_INTENTS_CONFIG, NORMALIZED_INTERESTS, CPLP_COUNTRIES } from '../constants';
 import { compressImage } from '../utils/imageCompression';
 import { trustGraph } from '../services/trustGraph';
-import { dataSaver } from '../services/dataSaverService';
+import { dataSaver, SimulatedNetworkMode, BandwidthTelemetry } from '../services/dataSaverService';
 import { connectionGraph } from '../services/connectionGraph';
+import { relationalMemory } from '../services/relationalMemory';
+import { OptimizedImage } from './common/OptimizedImage';
 import {
   Camera,
   Shield,
@@ -31,7 +33,19 @@ import {
   HeartHandshake,
   Zap,
   Flame,
-  CheckCircle2
+  CheckCircle2,
+  Download,
+  Database,
+  RefreshCw,
+  Eye,
+  Radio,
+  Smartphone,
+  Gauge,
+  Brain,
+  Layers,
+  Compass,
+  ArrowRight,
+  TrendingUp
 } from 'lucide-react';
 import { isGmailConnected } from '../services/gmail';
 
@@ -60,21 +74,44 @@ export const Profile: React.FC<ProfileProps> = ({
   onOpenKeypad,
   onOpenGmail
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'safety' | 'dataSaver'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'safety' | 'dataSaver' | 'memory'>('profile');
   const [emailInput, setEmailInput] = useState('');
   const [linking, setLinking] = useState(false);
   const [linkedSuccess, setLinkedSuccess] = useState(false);
   const [editingBio, setEditingBio] = useState(profile.bio);
 
   const [dataSaverSettings, setDataSaverSettings] = useState<DataSaverSettings>(() => dataSaver.getSettings());
+  const [telemetry, setTelemetry] = useState<BandwidthTelemetry>(() => dataSaver.getTelemetry());
+  const [offlineQueue, setOfflineQueue] = useState(() => dataSaver.getQueue());
+  const [networkMode, setNetworkMode] = useState<SimulatedNetworkMode>(() => dataSaver.getSimulatedMode());
+  const [isFlushing, setIsFlushing] = useState(false);
   const [mcrMetrics, setMcrMetrics] = useState(() => connectionGraph.calculateMCRMetrics());
+  const [userMemory, setUserMemory] = useState(() => relationalMemory.getMemoryForUser(profile.uid));
 
   const country = CPLP_COUNTRIES[profile.countryCode];
   const myTrustEvaluation = trustGraph.evaluateTrust(profile);
 
   useEffect(() => {
     setMcrMetrics(connectionGraph.calculateMCRMetrics());
-  }, []);
+    setUserMemory(relationalMemory.getMemoryForUser(profile.uid));
+
+    const unsubscribeDataSaver = dataSaver.subscribe((event) => {
+      if (event === 'telemetry_change') setTelemetry(dataSaver.getTelemetry());
+      if (event === 'queue_change') setOfflineQueue(dataSaver.getQueue());
+      if (event === 'network_change') setNetworkMode(dataSaver.getSimulatedMode());
+    });
+
+    const unsubscribeMemory = relationalMemory.subscribe((uid) => {
+      if (uid === profile.uid) {
+        setUserMemory(relationalMemory.getMemoryForUser(profile.uid));
+      }
+    });
+
+    return () => {
+      unsubscribeDataSaver();
+      unsubscribeMemory();
+    };
+  }, [profile.uid]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -105,20 +142,49 @@ export const Profile: React.FC<ProfileProps> = ({
     setDataSaverSettings(updated);
   };
 
+  const handleToggleThumbnailsOnly = (loadThumbnailsOnly: boolean) => {
+    const updated = dataSaver.updateSettings({ loadThumbnailsOnly });
+    setDataSaverSettings(updated);
+  };
+
+  const handleManualSync = async () => {
+    setIsFlushing(true);
+    try {
+      await dataSaver.flushQueue();
+      setOfflineQueue(dataSaver.getQueue());
+    } finally {
+      setIsFlushing(false);
+    }
+  };
+
+  const handleChangeNetworkMode = (mode: SimulatedNetworkMode) => {
+    dataSaver.setSimulatedMode(mode);
+    setNetworkMode(mode);
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const totalCalculated = telemetry.totalBytesDownloaded + telemetry.totalBytesSaved;
+  const savedPercent = totalCalculated > 0 ? Math.round((telemetry.totalBytesSaved / totalCalculated) * 100) : 0;
+
   return (
     <div className="flex-1 max-w-md mx-auto w-full p-4 pb-24 sm:pb-8 space-y-4">
       {/* User Mini Hero */}
       <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs flex items-center gap-4">
         <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-rose-500 shrink-0 bg-stone-100">
-          <img
-            src={dataSaver.getOptimizedImageUrl(profile.profilePhoto, true)}
+          <OptimizedImage
+            src={profile.profilePhoto}
             alt={profile.displayName}
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
+            variant="avatar"
+            className="w-full h-full"
           />
           <label
             htmlFor="profile-photo-upload"
-            className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer text-white hover:bg-black/50 transition"
+            className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer text-white hover:bg-black/50 transition z-10"
           >
             <Camera className="w-4 h-4" />
           </label>
@@ -135,7 +201,7 @@ export const Profile: React.FC<ProfileProps> = ({
           <div className="flex items-center gap-1.5">
             <h2 className="font-bold text-stone-900 text-lg truncate">{profile.displayName}</h2>
             <span className="text-sm font-normal text-stone-700">, {profile.age}</span>
-            {myTrustEvaluation.identityScore >= 0.85 && (
+            {(myTrustEvaluation.signals?.identityEvidenceLevel === 'verified_id' || myTrustEvaluation.signals?.identityEvidenceLevel === 'biometric_cleared' || profile.verificationStatus === 'verified') && (
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" title="Identidade Verificada" />
             )}
           </div>
@@ -196,6 +262,16 @@ export const Profile: React.FC<ProfileProps> = ({
           }`}
         >
           Perfil
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('memory')}
+          className={`flex-1 py-2 rounded-lg transition text-center flex items-center justify-center gap-1 ${
+            activeTab === 'memory' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
+          }`}
+        >
+          <Brain className="w-3 h-3 text-rose-500" />
+          <span>Memória</span>
         </button>
         <button
           type="button"
@@ -334,7 +410,7 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {myTrustEvaluation.badges.map((b, idx) => (
+              {(myTrustEvaluation.eligibleBadges || []).map((b, idx) => (
                 <div key={idx} className="p-2 bg-white rounded-lg border border-stone-200/80 shadow-2xs flex items-start gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
@@ -430,61 +506,346 @@ export const Profile: React.FC<ProfileProps> = ({
       {/* TAB 4: MODO ECONOMIA DE DADOS & RESILIÊNCIA CPLP (PONTO 4) */}
       {activeTab === 'dataSaver' && (
         <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          <div className="p-3 bg-gradient-to-r from-amber-50 to-rose-50 rounded-xl border border-amber-200/70">
-            <div className="flex items-center gap-2 mb-1 text-xs font-bold text-amber-950">
-              <Wifi className="w-4 h-4 text-amber-600" />
-              <span>Modo Economia de Dados (Conexão CPLP)</span>
+          {/* Header Banner */}
+          <div className="p-3.5 bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 rounded-xl border border-amber-200/80">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+                <Wifi className="w-4 h-4 text-amber-600" />
+                <span>Modo Economia de Dados (Conexão CPLP)</span>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                dataSaver.isOnline() ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+              }`}>
+                {dataSaver.isOnline() ? <CheckCircle2 className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+                <span>{dataSaver.isOnline() ? 'Online' : 'Offline'}</span>
+              </span>
             </div>
             <p className="text-[11px] text-stone-700 leading-relaxed">
-              Otimizado para redes 2G/3G e consumo consciente de dados em Luanda, Maputo, Mindelo, Bissau e além.
+              Separação arquitetural entre visual e economia real de rede. Otimizado para conexões 2G/3G e pacotes tarifados na Lusofonia (AO, BR, CV, GW, MZ, PT, ST, TL).
             </p>
           </div>
 
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
+          {/* 1. Real Bandwidth Telemetry Dashboard */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl">
+              <div className="flex items-center justify-between text-emerald-800 mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Dados Poupados</span>
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              </div>
+              <div className="text-base font-black text-emerald-950 font-mono">
+                {formatBytes(telemetry.totalBytesSaved)}
+              </div>
+              <p className="text-[10px] text-emerald-700 mt-0.5 font-medium">
+                {savedPercent}% de redução de tráfego
+              </p>
+            </div>
+
+            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl">
+              <div className="flex items-center justify-between text-stone-600 mb-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Tráfego Usado</span>
+                <Download className="w-3.5 h-3.5 text-stone-500" />
+              </div>
+              <div className="text-base font-black text-stone-900 font-mono">
+                {formatBytes(telemetry.totalBytesDownloaded)}
+              </div>
+              <p className="text-[10px] text-stone-700 mt-0.5">
+                {telemetry.networkRequestsCount} reqs · {telemetry.cacheHitsCount} no cache
+              </p>
+            </div>
+          </div>
+
+          {/* 2. Main Data Saver Toggle */}
+          <div className="flex items-center justify-between py-2 border-y border-stone-100">
             <div>
               <h4 className="text-xs font-bold text-stone-900">Ativar Economia de Dados</h4>
-              <p className="text-[11px] text-stone-700">Carregar fotos comprimidas e reduzir consumo em até 70%</p>
+              <p className="text-[11px] text-stone-700">Comprimir imagens via CDN e ativar cache agressivo</p>
             </div>
             <input
               type="checkbox"
+              id="toggle-data-saver-switch"
               checked={dataSaverSettings.enabled}
               onChange={e => handleToggleDataSaver(e.target.checked)}
               className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
             />
           </div>
 
+          {/* 3. Compression Tier Selector */}
           {dataSaverSettings.enabled && (
             <div className="space-y-3 pt-1">
               <div>
-                <label className="text-xs font-bold text-stone-900 block mb-1">Nível de Compressão</label>
+                <label className="text-xs font-bold text-stone-900 block mb-1.5">
+                  Nível Técnico de Resolução e Compressão
+                </label>
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  {(['ultra_low', 'balanced', 'high'] as const).map(lvl => (
+                  {(
+                    [
+                      { id: 'ultra_low', label: 'Ultra Econômico', weight: '~15-28 KB', color: 'rose' },
+                      { id: 'balanced', label: 'Equilibrado', weight: '~45-68 KB', color: 'amber' },
+                      { id: 'high', label: 'Qualidade', weight: '~180-350 KB', color: 'stone' }
+                    ] as const
+                  ).map(lvl => (
                     <button
-                      key={lvl}
+                      key={lvl.id}
                       type="button"
-                      onClick={() => handleChangeQualityLevel(lvl)}
-                      className={`p-2 rounded-xl border text-center transition font-semibold ${
-                        dataSaverSettings.qualityLevel === lvl
-                          ? 'bg-rose-50 border-rose-500 text-rose-700'
+                      onClick={() => handleChangeQualityLevel(lvl.id)}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                        dataSaverSettings.qualityLevel === lvl.id
+                          ? 'bg-rose-50 border-rose-500 text-rose-900 shadow-2xs'
                           : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
                       }`}
                     >
-                      {lvl === 'ultra_low' ? 'Ultra Econômico' : lvl === 'balanced' ? 'Equilibrado' : 'Qualidade'}
+                      <span className="font-bold text-[11px]">{lvl.label}</span>
+                      <span className="text-[9px] text-stone-700 mt-0.5 font-mono">{lvl.weight}</span>
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* On-demand reveal option for Ultra mode */}
+              {dataSaverSettings.qualityLevel === 'ultra_low' && (
+                <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/60 flex items-center justify-between">
+                  <div className="pr-2">
+                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                      <Eye className="w-3.5 h-3.5 text-amber-600" />
+                      <span>Toque para Carregar Fotos</span>
+                    </span>
+                    <p className="text-[10px] text-amber-800/90 mt-0.5 leading-snug">
+                      Pausa fotos grandes no Discover. Só descarrega se você tocar para inspecionar.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="toggle-tap-to-load"
+                    checked={dataSaverSettings.loadThumbnailsOnly}
+                    onChange={e => handleToggleThumbnailsOnly(e.target.checked)}
+                    className="w-4 h-4 accent-amber-600 cursor-pointer rounded shrink-0"
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-700 space-y-1">
-            <span className="font-semibold text-stone-900 flex items-center gap-1.5">
-              <Activity className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Sincronização Offline Automática</span>
-            </span>
-            <p className="text-[11px]">
-              Seus likes, aproximações e mensagens são guardados localmente e sincronizados de forma transparente assim que o sinal voltar.
+          {/* 4. Persistent Offline Queue Manager */}
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-rose-600" />
+                <span>Fila Offline Persistente</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-stone-200 text-stone-800 rounded-full">
+                {offlineQueue.length} {offlineQueue.length === 1 ? 'evento pendente' : 'eventos pendentes'}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-stone-600 leading-relaxed">
+              Suas aproximações (likes), descartes, mensagens e feedbacks são salvos em fila criptografada localmente. O envio é disparado automaticamente assim que a conexão restabelece.
             </p>
+
+            {offlineQueue.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                  {offlineQueue.map((item) => (
+                    <div key={item.id} className="text-[10px] bg-white p-2 rounded-lg border border-stone-200 flex items-center justify-between font-mono text-stone-700">
+                      <span className="font-semibold text-rose-700 uppercase">[{item.type}]</span>
+                      <span>{new Date(item.enqueuedAt).toLocaleTimeString()}</span>
+                      <span className="text-stone-400">tentativas: {item.retryCount}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleManualSync}
+                  disabled={isFlushing || !dataSaver.isOnline()}
+                  className="w-full py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isFlushing ? 'animate-spin' : ''}`} />
+                  <span>{isFlushing ? 'Sincronizando Fila...' : 'Forçar Sincronização Agora'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 5. Network Simulator Sandbox (Technical Validation) */}
+          <div className="p-3.5 bg-stone-900 text-stone-100 rounded-xl space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold flex items-center gap-1.5 text-stone-100">
+                <Radio className="w-3.5 h-3.5 text-rose-400" />
+                <span>Simulador de Rede CPLP (Validação Técnica)</span>
+              </span>
+              <span className="text-[9px] font-mono bg-stone-800 text-rose-300 px-1.5 py-0.5 rounded border border-stone-700">
+                DEV/TEST
+              </span>
+            </div>
+
+            <p className="text-[10px] text-stone-300 leading-snug">
+              Teste o comportamento da aplicação em diferentes cenários de infraestrutura móvel:
+            </p>
+
+            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+              {(
+                [
+                  { id: 'real', label: 'Rede Real (Dispositivo)' },
+                  { id: 'wifi_4g', label: 'WiFi / 4G Rápido' },
+                  { id: '3g_balanced', label: '3G Médio (Luanda/Mindelo)' },
+                  { id: 'offline_simulated', label: 'Offline Simulado' }
+                ] as const
+              ).map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => handleChangeNetworkMode(mode.id)}
+                  className={`p-2 rounded-lg border text-left font-medium transition cursor-pointer ${
+                    networkMode === mode.id
+                      ? 'bg-rose-600 border-rose-500 text-white font-bold'
+                      : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
+
+            {networkMode === 'offline_simulated' && (
+              <div className="p-2 bg-rose-950/80 border border-rose-800/80 rounded-lg text-[10px] text-rose-200 flex items-center gap-1.5">
+                <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                <span>Modo Offline simulado ativo. Todas as ações entrarão na fila persistente local.</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 5: MEMÓRIA RELACIONAL (Pessoa + Contexto + Comportamento + Reciprocidade + Resultado) */}
+      {activeTab === 'memory' && (
+        <div className="space-y-4">
+          {/* Header & Paradigm Shift Statement */}
+          <div className="bg-gradient-to-br from-stone-900 via-stone-850 to-stone-900 text-white p-5 rounded-2xl border border-stone-800 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400 flex items-center gap-1">
+                <Brain className="w-3.5 h-3.5" />
+                <span>Memória de Condições Relacionais</span>
+              </span>
+              <span className="text-[10px] font-mono bg-white/10 text-stone-200 px-2 py-0.5 rounded-full border border-white/20">
+                {userMemory.totalConditionsAnalyzed} interações calibradas
+              </span>
+            </div>
+
+            <h3 className="text-base font-serif font-bold text-stone-100 leading-snug">
+              Que condições produzem uma conexão significativa para ti?
+            </h3>
+
+            <p className="text-xs text-stone-300 leading-relaxed font-sans">
+              O ÉNós não reduz pessoas a listas de interesses estáticos. Construímos memória contínua sobre a dinâmica viva do encontro:
+            </p>
+
+            {/* 5-part Value Tuple Diagram */}
+            <div className="grid grid-cols-5 gap-1 pt-1 text-center font-mono">
+              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                <span className="text-[9px] text-rose-300 block font-sans font-bold">1. Pessoa</span>
+                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Ritmo</span>
+              </div>
+              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                <span className="text-[9px] text-purple-300 block font-sans font-bold">2. Contexto</span>
+                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Origem</span>
+              </div>
+              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                <span className="text-[9px] text-amber-300 block font-sans font-bold">3. Abertura</span>
+                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Tempo</span>
+              </div>
+              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
+                <span className="text-[9px] text-emerald-300 block font-sans font-bold">4. Troca</span>
+                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Turnos</span>
+              </div>
+              <div className="bg-rose-500/20 p-2 rounded-lg border border-rose-500/40">
+                <span className="text-[9px] text-rose-300 block font-sans font-bold">5. Vínculo</span>
+                <span className="text-[10px] text-rose-200 font-bold truncate block mt-0.5">MCR</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Synthesized Personal Insight */}
+          <div className="p-4 bg-white rounded-2xl border border-stone-200 shadow-2xs space-y-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-rose-600 shrink-0" />
+              <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wide">
+                Diagnóstico de Fertilidade Relacional
+              </h4>
+            </div>
+
+            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-800 leading-relaxed font-sans">
+              "{userMemory.fertileConditions.synthesizedInsight}"
+            </div>
+
+            {/* Core Fertile Drivers */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+              <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100 space-y-1">
+                <span className="text-[11px] font-bold text-rose-900 flex items-center gap-1.5">
+                  <HeartHandshake className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Ritmo Comunicativo Mais Ressonante</span>
+                </span>
+                <p className="text-xs text-rose-800 font-medium">
+                  {userMemory.fertileConditions.topResonantStyles.map(s => 
+                    s === 'reflective' ? 'Reflexivo (Profundidade & Pausa)' :
+                    s === 'warm' ? 'Acolhedor (Empatia & Cuidado)' :
+                    s === 'expressive' ? 'Expressivo (Vitalidade & Arte)' : 'Direto'
+                  ).join(' e ')}
+                </p>
+                <span className="text-[10px] text-rose-700/80 block">
+                  Preferência por profundidade: {userMemory.fertileConditions.optimalDepthPreference === 'deep' ? 'Diálogos Profundos' : 'Moderação inicial'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-100 space-y-1">
+                <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Contextos de Descoberta com Maior MCR</span>
+                </span>
+                <p className="text-xs text-purple-800 font-medium">
+                  {userMemory.fertileConditions.thrivingContexts.topOrigins.map(o =>
+                    o === 'SERENDIPITY' ? '✦ Descoberta Inesperada' :
+                    o === 'CULTURAL_BRIDGE' ? 'Ponte Cultural Lusófona' :
+                    o === 'VALUES_AFFINITY' ? 'Sintonia de Valores' : o
+                  ).join(', ')}
+                </p>
+                <span className="text-[10px] text-purple-700/80 block">
+                  Taxa de sucesso transnacional CPLP: {Math.round(userMemory.fertileConditions.thrivingContexts.crossBorderSuccessRate * 100)}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Dynamic Reciprocity & Friction Awareness */}
+          <div className="p-4 bg-white rounded-2xl border border-stone-200 shadow-2xs space-y-3">
+            <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-emerald-600" />
+              <span>Dinâmica de Reciprocidade & Equilíbrio de Turnos</span>
+            </h4>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl border border-stone-200">
+                <span className="text-stone-700 font-medium">Janela Ótima de Resposta:</span>
+                <span className="font-bold text-stone-900">{userMemory.fertileConditions.reciprocityPace.idealResponseWindow}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl border border-stone-200">
+                <span className="text-stone-700 font-medium">Equilíbrio de Diálogo:</span>
+                <span className="font-bold text-stone-900">
+                  {userMemory.fertileConditions.reciprocityPace.preferredTurnBalance === 'symmetric' ? 'Simétrico (50/50 em trocas de ideias)' : 'Fluido e orgânico'}
+                </span>
+              </div>
+
+              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-1.5">
+                <span className="text-[11px] font-bold text-amber-900 block">
+                  Gatilhos de Fricção Registados (O que desacelera a conexão para ti):
+                </span>
+                <ul className="text-[11px] text-amber-800 space-y-1 list-disc list-inside">
+                  {userMemory.fertileConditions.frictionTriggers.map((trig, idx) => (
+                    <li key={idx}>{trig}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         </div>
       )}

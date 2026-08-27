@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModuleProps } from '../moduleRegistry';
 import { EngineeringService } from '../../../services/admin/engineeringService';
+import { dataSaver, SimulatedNetworkMode, BandwidthTelemetry } from '../../../services/dataSaverService';
 import {
   Activity,
   Server,
@@ -13,7 +14,16 @@ import {
   Rocket,
   Bug,
   Gauge,
-  RotateCcw
+  RotateCcw,
+  Wifi,
+  WifiOff,
+  Database,
+  Sparkles,
+  Download,
+  RefreshCw,
+  Radio,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 
 export const EngineeringModule: React.FC<ModuleProps & { activeSubmoduleId?: string }> = ({
@@ -32,6 +42,39 @@ export const EngineeringModule: React.FC<ModuleProps & { activeSubmoduleId?: str
     { id: 'err_01', message: 'Timeout na resolução DNS secundária EMIS Luanda (recuperado com retry)', component: 'Payment-Worker', count: 3, lastOccurred: 'Há 42 min', severity: 'WARNING' },
     { id: 'err_02', message: 'WebSocket handshake cancelado pelo cliente (rede móvel 3G instável)', component: 'Chat-Gateway', count: 12, lastOccurred: 'Há 15 min', severity: 'INFO' }
   ]);
+
+  const [telemetry, setTelemetry] = useState<BandwidthTelemetry>(() => dataSaver.getTelemetry());
+  const [offlineQueue, setOfflineQueue] = useState(() => dataSaver.getQueue());
+  const [networkMode, setNetworkMode] = useState<SimulatedNetworkMode>(() => dataSaver.getSimulatedMode());
+  const [isFlushing, setIsFlushing] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = dataSaver.subscribe((event) => {
+      if (event === 'telemetry_change') setTelemetry(dataSaver.getTelemetry());
+      if (event === 'queue_change') setOfflineQueue(dataSaver.getQueue());
+      if (event === 'network_change') setNetworkMode(dataSaver.getSimulatedMode());
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleManualFlush = async () => {
+    setIsFlushing(true);
+    try {
+      await dataSaver.flushQueue();
+      setOfflineQueue(dataSaver.getQueue());
+    } finally {
+      setIsFlushing(false);
+    }
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  };
+
+  const totalCalculated = telemetry.totalBytesDownloaded + telemetry.totalBytesSaved;
+  const savedPercent = totalCalculated > 0 ? Math.round((telemetry.totalBytesSaved / totalCalculated) * 100) : 0;
 
   const currentTab = activeSubmoduleId || 'saude';
 
@@ -213,6 +256,159 @@ export const EngineeringModule: React.FC<ModuleProps & { activeSubmoduleId?: str
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* SUBMODULE: DATA SAVER & RESILIÊNCIA CPLP (PONTO 4) */}
+      {currentTab === 'data_saver' && (
+        <div className="space-y-6">
+          {/* Top Telemetry KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs">
+              <div className="flex items-center justify-between text-stone-700 text-xs">
+                <span>Dados Poupados</span>
+                <Sparkles className="w-4 h-4 text-emerald-500" />
+              </div>
+              <p className="text-2xl font-bold text-emerald-700 mt-2 font-mono">
+                {formatBytes(telemetry.totalBytesSaved)}
+              </p>
+              <span className="text-[10px] text-emerald-600 font-bold">{savedPercent}% de economia real</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs">
+              <div className="flex items-center justify-between text-stone-700 text-xs">
+                <span>Tráfego Efetivo</span>
+                <Download className="w-4 h-4 text-blue-500" />
+              </div>
+              <p className="text-2xl font-bold text-stone-900 mt-2 font-mono">
+                {formatBytes(telemetry.totalBytesDownloaded)}
+              </p>
+              <span className="text-[10px] text-stone-600 font-medium">Consumo de pacotes</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs">
+              <div className="flex items-center justify-between text-stone-700 text-xs">
+                <span>Taxa de Cache (Hits)</span>
+                <Database className="w-4 h-4 text-amber-500" />
+              </div>
+              <p className="text-2xl font-bold text-stone-900 mt-2 font-mono">
+                {telemetry.cacheHitsCount} hits
+              </p>
+              <span className="text-[10px] text-amber-700 font-medium">Evitou requisições redundantes</span>
+            </div>
+
+            <div className="bg-white rounded-2xl p-4 border border-stone-200 shadow-2xs">
+              <div className="flex items-center justify-between text-stone-700 text-xs">
+                <span>Fila Offline</span>
+                <Wifi className="w-4 h-4 text-rose-500" />
+              </div>
+              <p className="text-2xl font-bold text-rose-700 mt-2 font-mono">
+                {offlineQueue.length}
+              </p>
+              <span className="text-[10px] text-stone-600 font-medium">Eventos aguardando sync</span>
+            </div>
+          </div>
+
+          {/* Technical Architecture Specs */}
+          <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-rose-600" />
+                Matriz Técnica de Resolução & Degradação por Tier
+              </h3>
+              <span className="text-[10px] font-mono bg-stone-100 text-stone-700 px-2 py-0.5 rounded border border-stone-200">
+                DataSaverService v2.2
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead>
+                  <tr className="border-b border-stone-200 text-stone-700 text-[10px] uppercase font-bold">
+                    <th className="py-2.5 px-3">Modo / Nível</th>
+                    <th className="py-2.5 px-3">Largura Max (Cards)</th>
+                    <th className="py-2.5 px-3">Largura Max (Avatars)</th>
+                    <th className="py-2.5 px-3">Qualidade</th>
+                    <th className="py-2.5 px-3">Formato</th>
+                    <th className="py-2.5 px-3 text-right">Payload Médio</th>
+                    <th className="py-2.5 px-3 text-right">Economia vs RAW</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  <tr className="bg-rose-50/50">
+                    <td className="py-2.5 px-3 font-sans font-bold text-rose-900">Ultra Econômico</td>
+                    <td className="py-2.5 px-3">240px</td>
+                    <td className="py-2.5 px-3">120px</td>
+                    <td className="py-2.5 px-3">q=45</td>
+                    <td className="py-2.5 px-3 font-bold text-emerald-700">WebP</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-rose-800">~15-28 KB</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">~93%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-sans font-bold text-stone-900">Equilibrado (Default)</td>
+                    <td className="py-2.5 px-3">480px</td>
+                    <td className="py-2.5 px-3">200px</td>
+                    <td className="py-2.5 px-3">q=65</td>
+                    <td className="py-2.5 px-3 text-emerald-700">WebP</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-stone-800">~45-68 KB</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-emerald-700">~75%</td>
+                  </tr>
+                  <tr>
+                    <td className="py-2.5 px-3 font-sans font-bold text-stone-900">Qualidade Alta</td>
+                    <td className="py-2.5 px-3">800px</td>
+                    <td className="py-2.5 px-3">300px</td>
+                    <td className="py-2.5 px-3">q=80</td>
+                    <td className="py-2.5 px-3">Auto</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-stone-800">~180-350 KB</td>
+                    <td className="py-2.5 px-3 text-right font-bold text-stone-600">~40%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Offline Queue Inspector & Manual Dispatch */}
+          <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                <Database className="w-4 h-4 text-amber-600" />
+                Inspetor de Fila Offline Local & Reenvio
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleManualFlush}
+                  disabled={isFlushing || offlineQueue.length === 0}
+                  className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-200 text-white rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isFlushing ? 'animate-spin' : ''}`} />
+                  <span>{isFlushing ? 'Despejando...' : 'Forçar Sync Imediato'}</span>
+                </button>
+              </div>
+            </div>
+
+            {offlineQueue.length === 0 ? (
+              <div className="p-4 rounded-xl bg-stone-50 border border-stone-200 text-stone-600 text-xs flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>A fila de eventos offline está vazia. Todas as ações foram sincronizadas com o backend.</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {offlineQueue.map(item => (
+                  <div key={item.id} className="p-3 bg-stone-50 rounded-xl border border-stone-200 flex items-center justify-between text-xs font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">[{item.type}]</span>
+                      <span className="text-stone-700 font-sans">ID: {item.id}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-stone-600">
+                      <span>Enfileirado: {new Date(item.enqueuedAt).toLocaleTimeString()}</span>
+                      <span className="text-amber-700">Tentativas: {item.retryCount}/5</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

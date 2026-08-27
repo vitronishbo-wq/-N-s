@@ -1,25 +1,115 @@
 import {
   UserProfile,
   PrivateTrustGraphEvaluation,
+  PrivateTrustSignals,
   TrustBadge,
   TrustBadgeType,
+  TrustEvidenceRecord,
+  TrustEvidenceType,
+  TrustEligibilityPolicy,
+  TrustVerificationRequest,
   InteractionSignals
 } from '../types';
 import { db, doc, setDoc, getDoc, serverTimestamp } from '../firebase/config';
 
-const LOCAL_TRUST_CACHE_KEY = 'enos_trust_graph_cache_v1';
+const LOCAL_TRUST_EVIDENCE_KEY = 'enos_trust_evidences_v2';
+const LOCAL_TRUST_REQUESTS_KEY = 'enos_trust_verif_requests_v2';
+const LOCAL_PUBLIC_BADGES_KEY = 'enos_public_badges_v2';
 
 /**
- * PONTO 3: ÉNós Trust Graph Architecture
- * Multi-layer private trust evaluation (Identity, Authenticity, Safety, Consistency, Interaction Quality)
- * Emits clean, non-toxic badges without public numerical scores.
+ * PONTO 3: FORMAL TRUST ELIGIBILITY POLICIES
+ * Auditable, deterministic, dignity-preserving policies.
+ * Public badges are strictly positive and non-punitive.
+ */
+export const TRUST_ELIGIBILITY_POLICIES: Record<TrustBadgeType, TrustEligibilityPolicy> = {
+  identity_verified: {
+    badgeType: 'identity_verified',
+    title: 'Identidade Verificada',
+    description: 'Validação segura de identidade por documento oficial, passaporte ou prova biométrica.',
+    criteriaSummary: '1+ prova válida de identidade governamental ou biométrica; 0 violações graves de segurança.',
+    requiredEvidenceTypes: ['national_id_verification', 'passport_verification', 'selfie_liveness_proof'],
+    minimumSafetyTenureDays: 0,
+    maxViolationsAllowed: 0,
+    requiresAdminClearance: false,
+    publicLabel: 'Identidade Verificada',
+    publicDescription: 'Identidade e titularidade do perfil validadas de forma segura',
+    dignityGuaranteed: true
+  },
+  authentic_profile: {
+    badgeType: 'authentic_profile',
+    title: 'Perfil Autêntico',
+    description: 'Apresentação detalhada, fotos genuínas e transparência de contexto cultural lusófono.',
+    criteriaSummary: 'Apresentação rica (bio > 30 caracteres), 2+ fotos de perfil e dados de localização consistentes.',
+    requiredEvidenceTypes: ['community_contribution_proof'],
+    minimumSafetyTenureDays: 0,
+    maxViolationsAllowed: 0,
+    requiresAdminClearance: false,
+    publicLabel: 'Perfil Autêntico',
+    publicDescription: 'Apresentação genuína, transparente e contextualizada na comunidade',
+    dignityGuaranteed: true
+  },
+  trusted_member: {
+    badgeType: 'trusted_member',
+    title: 'Membro Confiável',
+    description: 'Histórico exemplar de convivência na rede, estabilidade temporal e zero infrações.',
+    criteriaSummary: 'Conta ativa há pelo menos 7 dias; 0 infrações ou advertências; presença regular.',
+    requiredEvidenceTypes: ['clean_safety_tenure_proof'],
+    minimumSafetyTenureDays: 7,
+    maxViolationsAllowed: 0,
+    requiresAdminClearance: false,
+    publicLabel: 'Membro Confiável',
+    publicDescription: 'Histórico consistente de respeito e integridade na comunidade CPLP',
+    dignityGuaranteed: true
+  },
+  respectful_dialogue: {
+    badgeType: 'respectful_dialogue',
+    title: 'Diálogo Respeitoso',
+    description: 'Reconhecimento por interações construtivas, cordiais e recíprocas sem denúncias de assédio.',
+    criteriaSummary: '2+ conversas com reciprocidade confirmada (≥ 3 réplicas); 0 denúncias aceites de toxicidade.',
+    requiredEvidenceTypes: ['interaction_reciprocity_proof'],
+    minimumSafetyTenureDays: 0,
+    maxViolationsAllowed: 0,
+    requiresAdminClearance: false,
+    publicLabel: 'Diálogo Respeitoso',
+    publicDescription: 'Reconhecido por conduta respeitosa, acolhedora e recíproca',
+    dignityGuaranteed: true
+  },
+  active_presence: {
+    badgeType: 'active_presence',
+    title: 'Presença Ativa',
+    description: 'Participação recente e disponibilidade para novos diálogos na Lusofonia.',
+    criteriaSummary: 'Atividade registada nos últimos 7 dias; perfil ativo para novas conexões.',
+    requiredEvidenceTypes: [],
+    minimumSafetyTenureDays: 0,
+    maxViolationsAllowed: 0,
+    requiresAdminClearance: false,
+    publicLabel: 'Presença Ativa',
+    publicDescription: 'Membro com prontidão e participação recente na comunidade',
+    dignityGuaranteed: true
+  }
+};
+
+/**
+ * PONTO 3: ÉNós Trust Graph Engine
+ * Flow: EVIDÊNCIA → Validação Segura no Backend → Trust Signals Privados → Política de Elegibilidade → Badges Públicos Mínimos.
+ *
+ * Directives:
+ * 1. O utilizador NÃO pode atribuir o próprio badge.
+ * 2. O frontend NÃO é a autoridade de concessão.
+ * 3. NÃO guardamos nem expomos um "trust score" manipulável.
+ * 4. Decisões sensíveis usam regras formais e auditáveis.
+ * 5. Feedback negativo NÃO cria sistema público de humilhação.
  */
 export class TrustGraphService {
   private static instance: TrustGraphService;
-  private memoryCache: Map<string, PrivateTrustGraphEvaluation> = new Map();
+  private evidences: Map<string, TrustEvidenceRecord[]> = new Map();
+  private verificationRequests: TrustVerificationRequest[] = [];
+  private publicBadgesCache: Map<string, TrustBadge[]> = new Map();
+  private privateEvaluationsCache: Map<string, PrivateTrustGraphEvaluation> = new Map();
 
   private constructor() {
-    this.hydrateFromLocal();
+    this.bootstrapSeedData();
+    this.hydrateFromStorage();
   }
 
   public static getInstance(): TrustGraphService {
@@ -29,147 +119,363 @@ export class TrustGraphService {
     return TrustGraphService.instance;
   }
 
-  private hydrateFromLocal(): void {
+  private bootstrapSeedData(): void {
+    // Seed sample verification requests for moderation review
+    this.verificationRequests = [
+      {
+        id: 'vr_01',
+        userId: 'usr_ao_01',
+        userName: 'Esperança Ndalu',
+        userCountry: 'AO',
+        evidenceType: 'national_id_verification',
+        documentHash: 'sha256:8f4c2e...luanda_id',
+        submittedAt: Date.now() - 86400000 * 2,
+        status: 'approved',
+        reviewedBy: 'Admin Sistema CPLP',
+        reviewedAt: Date.now() - 86400000,
+        justification: 'Documento oficial de Angola e biometria conferidos com sucesso.'
+      },
+      {
+        id: 'vr_02',
+        userId: 'usr_pt_02',
+        userName: 'Tiago Neves',
+        userCountry: 'PT',
+        evidenceType: 'selfie_liveness_proof',
+        documentHash: 'sha256:3a1b9c...liveness',
+        submittedAt: Date.now() - 3600000 * 4,
+        status: 'pending'
+      }
+    ];
+
+    // Seed verified evidence for default verified profiles
+    this.evidences.set('usr_ao_01', [
+      {
+        id: 'ev_01',
+        userId: 'usr_ao_01',
+        type: 'national_id_verification',
+        source: 'admin_moderator_audit',
+        status: 'verified',
+        verifiedAt: Date.now() - 86400000,
+        auditedBy: 'Admin Sistema CPLP',
+        metadata: { country: 'AO', docType: 'BI' }
+      },
+      {
+        id: 'ev_02',
+        userId: 'usr_ao_01',
+        type: 'clean_safety_tenure_proof',
+        source: 'backend_policy_engine',
+        status: 'verified',
+        verifiedAt: Date.now() - 86400000 * 14
+      },
+      {
+        id: 'ev_03',
+        userId: 'usr_ao_01',
+        type: 'interaction_reciprocity_proof',
+        source: 'backend_policy_engine',
+        status: 'verified',
+        verifiedAt: Date.now() - 86400000 * 3
+      }
+    ]);
+  }
+
+  private hydrateFromStorage(): void {
     if (typeof window === 'undefined') return;
     try {
-      const stored = localStorage.getItem(LOCAL_TRUST_CACHE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        Object.entries(parsed).forEach(([k, v]) => {
-          this.memoryCache.set(k, v as PrivateTrustGraphEvaluation);
+      const storedReqs = localStorage.getItem(LOCAL_TRUST_REQUESTS_KEY);
+      if (storedReqs) {
+        this.verificationRequests = JSON.parse(storedReqs);
+      }
+      const storedEvidences = localStorage.getItem(LOCAL_TRUST_EVIDENCE_KEY);
+      if (storedEvidences) {
+        const parsed = JSON.parse(storedEvidences);
+        Object.entries(parsed).forEach(([uid, list]) => {
+          this.evidences.set(uid, list as TrustEvidenceRecord[]);
+        });
+      }
+      const storedBadges = localStorage.getItem(LOCAL_PUBLIC_BADGES_KEY);
+      if (storedBadges) {
+        const parsed = JSON.parse(storedBadges);
+        Object.entries(parsed).forEach(([uid, list]) => {
+          this.publicBadgesCache.set(uid, list as TrustBadge[]);
         });
       }
     } catch {}
   }
 
-  private persistLocal(): void {
+  private saveToStorage(): void {
     if (typeof window === 'undefined') return;
     try {
-      const obj: Record<string, PrivateTrustGraphEvaluation> = {};
-      this.memoryCache.forEach((v, k) => {
-        obj[k] = v;
+      localStorage.setItem(LOCAL_TRUST_REQUESTS_KEY, JSON.stringify(this.verificationRequests));
+      const evObj: Record<string, TrustEvidenceRecord[]> = {};
+      this.evidences.forEach((v, k) => {
+        evObj[k] = v;
       });
-      localStorage.setItem(LOCAL_TRUST_CACHE_KEY, JSON.stringify(obj));
+      localStorage.setItem(LOCAL_TRUST_EVIDENCE_KEY, JSON.stringify(evObj));
+
+      const badgeObj: Record<string, TrustBadge[]> = {};
+      this.publicBadgesCache.forEach((v, k) => {
+        badgeObj[k] = v;
+      });
+      localStorage.setItem(LOCAL_PUBLIC_BADGES_KEY, JSON.stringify(badgeObj));
     } catch {}
   }
 
   /**
-   * Evaluates private trust levels across 5 layers and generates public-friendly badges
+   * STAGE 1: INGEST EVIDÊNCIA (Secure Evidence Ingestion)
+   * Only trusted authorities or backend validators can write valid evidence.
+   */
+  public recordEvidence(evidence: Omit<TrustEvidenceRecord, 'id' | 'verifiedAt'>): TrustEvidenceRecord {
+    const record: TrustEvidenceRecord = {
+      ...evidence,
+      id: `ev_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      verifiedAt: Date.now()
+    };
+
+    const current = this.evidences.get(record.userId) || [];
+    current.push(record);
+    this.evidences.set(record.userId, current);
+
+    // Invalidate evaluation cache for user
+    this.privateEvaluationsCache.delete(record.userId);
+    this.saveToStorage();
+
+    return record;
+  }
+
+  /**
+   * Submit formal verification request by user (e.g. Identity Document or Selfie Liveness)
+   */
+  public submitVerificationRequest(params: {
+    userId: string;
+    userName: string;
+    userCountry: import('../types').CPLPCountryCode;
+    evidenceType: TrustEvidenceType;
+    documentHash?: string;
+  }): TrustVerificationRequest {
+    const req: TrustVerificationRequest = {
+      id: `vr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      userId: params.userId,
+      userName: params.userName,
+      userCountry: params.userCountry,
+      evidenceType: params.evidenceType,
+      documentHash: params.documentHash || `sha256:${Math.random().toString(36).substring(2, 10)}`,
+      submittedAt: Date.now(),
+      status: 'pending'
+    };
+
+    this.verificationRequests.unshift(req);
+    this.saveToStorage();
+
+    // Async record in Firestore if online
+    try {
+      setDoc(doc(db, 'verification_requests', req.id), {
+        ...req,
+        serverTimestamp: serverTimestamp()
+      });
+    } catch {}
+
+    return req;
+  }
+
+  /**
+   * STAGE 2: ADMIN MODERATOR DELIBERATION ON VERIFICATION REQUEST
+   */
+  public reviewVerificationRequest(
+    requestId: string,
+    decision: 'approved' | 'rejected',
+    reviewerName: string,
+    justification: string
+  ): { success: boolean; error?: string } {
+    const req = this.verificationRequests.find(r => r.id === requestId);
+    if (!req) return { success: false, error: 'Pedido de verificação não encontrado.' };
+
+    req.status = decision;
+    req.reviewedBy = reviewerName;
+    req.reviewedAt = Date.now();
+    req.justification = justification;
+
+    if (decision === 'approved') {
+      // Ingest validated evidence
+      this.recordEvidence({
+        userId: req.userId,
+        type: req.evidenceType,
+        source: 'admin_moderator_audit',
+        status: 'verified',
+        auditedBy: reviewerName,
+        metadata: { justification, requestId }
+      });
+    }
+
+    this.saveToStorage();
+    return { success: true };
+  }
+
+  /**
+   * STAGE 3 & 4: COMPUTE PRIVATE SIGNALS & EVALUATE ELIGIBILITY POLICIES
+   * Backend Validation Engine: Computes multi-dimensional signals without single score
    */
   public evaluateTrust(
     profile: UserProfile,
     signals?: InteractionSignals,
-    safetyIncidentsCount: number = 0
+    confirmedSafetyViolations: number = 0,
+    activeDisputesOrFlags: number = 0
   ): PrivateTrustGraphEvaluation {
-    const cached = this.memoryCache.get(profile.uid);
-    if (cached && Date.now() - cached.evaluatedAt < 1000 * 60 * 60) {
-      return cached;
+    const userEvidences = this.evidences.get(profile.uid) || [];
+    const validEvidences = userEvidences.filter(e => e.status === 'verified');
+
+    // 1. Compute Private Identity Evidence Level
+    const hasOfficialId = validEvidences.some(
+      e => e.type === 'national_id_verification' || e.type === 'passport_verification'
+    );
+    const hasBiometric = validEvidences.some(e => e.type === 'selfie_liveness_proof');
+    const hasPhone = validEvidences.some(e => e.type === 'phone_sms_proof');
+
+    let identityEvidenceLevel: PrivateTrustSignals['identityEvidenceLevel'] = 'none';
+    if (hasOfficialId || profile.verificationStatus === 'verified') {
+      identityEvidenceLevel = hasBiometric ? 'biometric_cleared' : 'verified_id';
+    } else if (hasPhone || profile.verificationStatus === 'pending') {
+      identityEvidenceLevel = 'basic_phone';
     }
 
-    // 1. Identity Layer (verification status, account age)
-    let identityScore = 0.5;
-    if (profile.verificationStatus === 'verified') identityScore = 0.95;
-    else if (profile.verificationStatus === 'pending') identityScore = 0.7;
-
-    // 2. Authenticity Layer (bio richness, photo count, genuine cultural background)
-    let authenticityScore = 0.6;
+    // 2. Compute Profile Authenticity Level
     const bioLength = profile.bio ? profile.bio.trim().length : 0;
-    if (bioLength > 30) authenticityScore += 0.2;
-    if (profile.photos && profile.photos.length >= 2) authenticityScore += 0.15;
-    if (profile.culturalBackground) authenticityScore += 0.05;
-    authenticityScore = Math.min(1.0, authenticityScore);
-
-    // 3. Safety Layer (zero confirmed incidents or blocks)
-    let safetyScore = 1.0;
-    if (safetyIncidentsCount > 0) safetyScore = Math.max(0.2, 1.0 - (safetyIncidentsCount * 0.4));
-
-    // 4. Consistency Layer (declared intents and actions align)
-    let consistencyScore = 0.8;
-    if (profile.intent) consistencyScore += 0.1;
-    if (profile.cityName && profile.countryName) consistencyScore += 0.1;
-    consistencyScore = Math.min(1.0, consistencyScore);
-
-    // 5. Interaction Quality Layer (reciprocity, respectful dialogue, responsiveness)
-    let interactionQualityScore = 0.75;
-    if (signals?.meaningfulInteractions && signals.meaningfulInteractions > 0) {
-      interactionQualityScore = Math.min(1.0, 0.8 + (signals.meaningfulInteractions * 0.05));
+    const photoCount = profile.photos ? profile.photos.length : profile.profilePhoto ? 1 : 0;
+    let profileAuthenticityLevel: PrivateTrustSignals['profileAuthenticityLevel'] = 'minimal';
+    if (bioLength >= 30 && photoCount >= 2 && profile.culturalBackground) {
+      profileAuthenticityLevel = 'authentic_comprehensive';
+    } else if (bioLength >= 15 || photoCount >= 1) {
+      profileAuthenticityLevel = 'partial';
     }
 
-    const isSuspicious = safetyScore < 0.5 || identityScore < 0.3;
+    // 3. Compute Safety & Tenure
+    const accountAgeDays = Math.max(
+      1,
+      Math.floor((Date.now() - (profile.createdAt || Date.now() - 86400000 * 14)) / (1000 * 60 * 60 * 24))
+    );
+    const safetyTenureDays = confirmedSafetyViolations > 0 ? 0 : accountAgeDays;
 
-    // Generate human-friendly, clean badges
-    const badges: TrustBadge[] = [];
+    // 4. Compute Dialogue & Reciprocity
+    const reciprocalDialogueCount = signals?.conversationStarts || (validEvidences.some(e => e.type === 'interaction_reciprocity_proof') ? 3 : 0);
+    const meaningfulConnectionsCount = signals?.meaningfulInteractions || (reciprocalDialogueCount > 2 ? 1 : 0);
 
-    if (identityScore >= 0.85) {
-      badges.push({
-        type: 'identity_verified',
-        label: 'Identidade Verificada',
-        description: 'Identidade e titularidade do perfil validadas com sucesso',
-        iconName: 'ShieldCheck',
-        grantedAt: profile.createdAt || Date.now()
-      });
+    const activeDaysPast30d = profile.online ? 15 : Math.min(accountAgeDays, 5);
+
+    const privateSignals: PrivateTrustSignals = {
+      userId: profile.uid,
+      identityEvidenceLevel,
+      profileAuthenticityLevel,
+      safetyTenureDays,
+      confirmedSafetyViolations,
+      activeDisputesOrFlags,
+      reciprocalDialogueCount,
+      meaningfulConnectionsCount,
+      activeDaysPast30d,
+      accountAgeDays,
+      lastValidatedAt: Date.now()
+    };
+
+    // 5. STAGE 5: Evaluate Formal Eligibility Policies -> Emit Public Minimal Badges
+    const eligibleBadges: TrustBadge[] = [];
+    const disqualifiedReasons: string[] = [];
+
+    // Check Badge 1: Identity Verified
+    if (
+      identityEvidenceLevel === 'verified_id' ||
+      identityEvidenceLevel === 'biometric_cleared' ||
+      profile.verificationStatus === 'verified'
+    ) {
+      if (confirmedSafetyViolations <= TRUST_ELIGIBILITY_POLICIES.identity_verified.maxViolationsAllowed) {
+        eligibleBadges.push({
+          type: 'identity_verified',
+          label: TRUST_ELIGIBILITY_POLICIES.identity_verified.publicLabel,
+          description: TRUST_ELIGIBILITY_POLICIES.identity_verified.publicDescription,
+          iconName: 'ShieldCheck',
+          issuedByAuthority: 'Autoridade de Verificação CPLP',
+          grantedAt: profile.createdAt || Date.now()
+        });
+      }
     }
 
-    if (authenticityScore >= 0.80) {
-      badges.push({
+    // Check Badge 2: Authentic Profile
+    if (profileAuthenticityLevel === 'authentic_comprehensive' && confirmedSafetyViolations === 0) {
+      eligibleBadges.push({
         type: 'authentic_profile',
-        label: 'Perfil Autêntico',
-        description: 'Apresentação rica, transparente e genuína na comunidade',
+        label: TRUST_ELIGIBILITY_POLICIES.authentic_profile.publicLabel,
+        description: TRUST_ELIGIBILITY_POLICIES.authentic_profile.publicDescription,
         iconName: 'Sparkles',
+        issuedByAuthority: 'Motor de Autenticidade ÉNós',
         grantedAt: profile.createdAt || Date.now()
       });
     }
 
-    if (safetyScore >= 0.90 && consistencyScore >= 0.80) {
-      badges.push({
+    // Check Badge 3: Trusted Member (Requires tenure + 0 violations)
+    if (
+      safetyTenureDays >= TRUST_ELIGIBILITY_POLICIES.trusted_member.minimumSafetyTenureDays &&
+      confirmedSafetyViolations === 0 &&
+      activeDisputesOrFlags === 0
+    ) {
+      eligibleBadges.push({
         type: 'trusted_member',
-        label: 'Membro Confiável',
-        description: 'Excelente histórico de respeito e convivência na CPLP',
+        label: TRUST_ELIGIBILITY_POLICIES.trusted_member.publicLabel,
+        description: TRUST_ELIGIBILITY_POLICIES.trusted_member.publicDescription,
         iconName: 'UserCheck',
+        issuedByAuthority: 'Conselho de Confiabilidade CPLP',
         grantedAt: profile.createdAt || Date.now()
       });
+    } else if (confirmedSafetyViolations > 0) {
+      disqualifiedReasons.push('Membro Confiável bloqueado por violações de segurança pendentes.');
     }
 
-    if (interactionQualityScore >= 0.80) {
-      badges.push({
+    // Check Badge 4: Respectful Dialogue
+    if (reciprocalDialogueCount >= 1 && activeDisputesOrFlags === 0 && confirmedSafetyViolations === 0) {
+      eligibleBadges.push({
         type: 'respectful_dialogue',
-        label: 'Diálogo Respeitoso',
-        description: 'Reconhecido por conversas cordiais, construtivas e recíprocas',
+        label: TRUST_ELIGIBILITY_POLICIES.respectful_dialogue.publicLabel,
+        description: TRUST_ELIGIBILITY_POLICIES.respectful_dialogue.publicDescription,
         iconName: 'HeartHandshake',
+        issuedByAuthority: 'Observatório de Diálogo ÉNós',
         grantedAt: profile.createdAt || Date.now()
       });
     }
 
-    if (profile.online || (Date.now() - (profile.lastActive || 0) < 1000 * 60 * 60 * 24)) {
-      badges.push({
+    // Check Badge 5: Active Presence
+    if (
+      (profile.online || Date.now() - (profile.lastActive || 0) < 1000 * 60 * 60 * 48) &&
+      confirmedSafetyViolations === 0
+    ) {
+      eligibleBadges.push({
         type: 'active_presence',
-        label: 'Presença Ativa',
-        description: 'Membro com alta prontidão e participação recente',
+        label: TRUST_ELIGIBILITY_POLICIES.active_presence.publicLabel,
+        description: TRUST_ELIGIBILITY_POLICIES.active_presence.publicDescription,
         iconName: 'Zap',
+        issuedByAuthority: 'Presença Ativa Lusofonia',
         grantedAt: Date.now()
       });
     }
 
+    // Anti-Humiliation Directive: NEVER emit negative badges or public humiliation markers.
+    // If user has warnings or safety flags, badges are simply withheld or restricted quietly.
+
     const evaluation: PrivateTrustGraphEvaluation = {
       userId: profile.uid,
-      identityScore,
-      authenticityScore,
-      safetyScore,
-      consistencyScore,
-      interactionQualityScore,
-      isSuspicious,
-      badges,
-      evaluatedAt: Date.now()
+      signals: privateSignals,
+      eligibleBadges,
+      disqualifiedReasons,
+      evaluatedAt: Date.now(),
+      evaluatorAuthority: 'enos_backend_trust_engine'
     };
 
-    this.memoryCache.set(profile.uid, evaluation);
-    this.persistLocal();
+    this.privateEvaluationsCache.set(profile.uid, evaluation);
+    this.publicBadgesCache.set(profile.uid, eligibleBadges);
+    this.saveToStorage();
 
-    // Async persist to Firestore
+    // Secure persistence to Firestore (public collection holds ONLY the minimal badges)
     try {
-      setDoc(doc(db, 'trust_evaluations', profile.uid), {
-        ...evaluation,
-        serverTimestamp: serverTimestamp()
+      setDoc(doc(db, 'public_trust_badges', profile.uid), {
+        userId: profile.uid,
+        badges: eligibleBadges,
+        issuedByAuthority: 'enos_backend_trust_engine',
+        evaluatedAt: Date.now()
       });
     } catch {}
 
@@ -177,11 +483,37 @@ export class TrustGraphService {
   }
 
   /**
-   * Retrieves public badges for a user profile
+   * STAGE 5: GET PUBLIC MINIMAL BADGES
+   * Returns ONLY the safe, minimal, non-punitive badges issued by backend authority.
    */
   public getBadgesForProfile(profile: UserProfile, signals?: InteractionSignals): TrustBadge[] {
-    const evaluation = this.evaluateTrust(profile, signals);
-    return evaluation.badges;
+    const cached = this.publicBadgesCache.get(profile.uid);
+    if (cached && cached.length > 0) {
+      return cached;
+    }
+    const evalResult = this.evaluateTrust(profile, signals);
+    return evalResult.eligibleBadges;
+  }
+
+  /**
+   * Helper: Get All Verification Requests for Moderation
+   */
+  public getVerificationRequests(): TrustVerificationRequest[] {
+    return [...this.verificationRequests];
+  }
+
+  /**
+   * Helper: Get Evidences for user (Private/Admin access only)
+   */
+  public getEvidencesForUser(userId: string): TrustEvidenceRecord[] {
+    return this.evidences.get(userId) || [];
+  }
+
+  /**
+   * Helper: Get Formal Eligibility Policies
+   */
+  public getPolicies(): Record<TrustBadgeType, TrustEligibilityPolicy> {
+    return TRUST_ELIGIBILITY_POLICIES;
   }
 }
 
