@@ -7,6 +7,7 @@ import {
   assistConversationIcebreaker,
   moderateContent
 } from './src/services/ai';
+import { mcrEventLogger } from './src/services/mcrEventLogger';
 
 dotenv.config();
 
@@ -195,6 +196,102 @@ app.post('/api/trust/evaluate', (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to evaluate trust graph' });
+  }
+});
+
+// PONTO 1.1: McrEventLogger Backend & Audit Endpoints
+app.post('/api/mcr/events', async (req, res) => {
+  try {
+    const payload = req.body;
+    if (!payload || !payload.userId || !payload.targetUid || !payload.stage) {
+      return res.status(400).json({
+        error: 'Missing required fields: userId, targetUid, and stage are mandatory'
+      });
+    }
+
+    const context = {
+      ipOrOrigin: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'unknown',
+      environment: process.env.NODE_ENV || 'development',
+      sessionId: req.headers['x-session-id'] as string | undefined
+    };
+
+    const auditedEvent = await mcrEventLogger.logTransitionEvent(payload, context);
+    res.status(201).json({
+      success: true,
+      event: auditedEvent
+    });
+  } catch (error) {
+    console.error('MCR Event Log Error:', error);
+    res.status(500).json({
+      error: 'Failed to record audited MCR transition event',
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+app.post('/api/mcr/batch', async (req, res) => {
+  try {
+    const { events } = req.body;
+    if (!Array.isArray(events)) {
+      return res.status(400).json({ error: 'Payload must contain an "events" array' });
+    }
+
+    const context = {
+      ipOrOrigin: (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1',
+      userAgent: req.headers['user-agent'] || 'unknown',
+      environment: process.env.NODE_ENV || 'development'
+    };
+
+    const auditedEvents = await mcrEventLogger.logBatchEvents(events, context);
+    res.status(201).json({
+      success: true,
+      count: auditedEvents.length,
+      events: auditedEvents
+    });
+  } catch (error) {
+    console.error('MCR Batch Log Error:', error);
+    res.status(500).json({ error: 'Failed to record batch MCR transition events' });
+  }
+});
+
+app.get('/api/mcr/audit', async (req, res) => {
+  try {
+    const { userId, targetUid, stage, origin, timeframe, limit: limitParam } = req.query;
+    const events = await mcrEventLogger.queryAuditEvents({
+      userId: userId as string | undefined,
+      targetUid: targetUid as string | undefined,
+      stage: stage as string | undefined,
+      origin: origin as string | undefined,
+      timeframe: (timeframe as '7d' | '30d' | 'all') || '7d',
+      limitCount: limitParam ? parseInt(limitParam as string, 10) : 100
+    });
+
+    res.json({
+      success: true,
+      count: events.length,
+      events
+    });
+  } catch (error) {
+    console.error('MCR Audit Query Error:', error);
+    res.status(500).json({ error: 'Failed to query audited MCR events' });
+  }
+});
+
+app.get('/api/mcr/metrics', async (req, res) => {
+  try {
+    const { timeframe, origin } = req.query;
+    const metrics = await mcrEventLogger.calculateAuditMetrics(
+      (timeframe as '7d' | '30d' | 'all') || '7d',
+      origin as string | undefined
+    );
+    res.json({
+      success: true,
+      metrics
+    });
+  } catch (error) {
+    console.error('MCR Metrics Error:', error);
+    res.status(500).json({ error: 'Failed to calculate MCR audit metrics' });
   }
 });
 

@@ -95,6 +95,14 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /mcr_audit_events/{eventId} {
+      allow read: if isAuthenticated();
+      // Allow creation of auditable event records by authenticated users or backend
+      allow create: if isAuthenticated();
+      // Immutable audit log: disallow update and delete to preserve audit trail integrity
+      allow update, delete: if false;
+    }
+
     match /connection_learnings/{learningId} {
       allow read, write: if isAuthenticated();
     }

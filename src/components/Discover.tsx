@@ -7,7 +7,8 @@ import {
   InteractionSignals,
   DiscoveryCandidate,
   ExpansionLevel,
-  TrustBadge
+  TrustBadge,
+  NetworkCondition
 } from '../types';
 import { DiscoveryAppService } from '../services/discoveryService';
 import { ClientAiAdapter } from '../services/aiAdapter';
@@ -45,7 +46,9 @@ import {
   Award,
   Zap,
   Check,
-  Brain
+  Brain,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -171,6 +174,7 @@ export const Discover: React.FC<DiscoverProps> = ({
   const [selectedQuestionIdx, setSelectedQuestionIdx] = useState(0);
   const [userQuestionResponse, setUserQuestionResponse] = useState('');
   const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+  const [networkCondition, setNetworkCondition] = useState<NetworkCondition>(() => dataSaver.detectCurrentNetworkCondition());
   const [savedUserResponse, setSavedUserResponse] = useState<string | null>(() => {
     try {
       return localStorage.getItem('enos_user_daily_answer');
@@ -178,6 +182,16 @@ export const Discover: React.FC<DiscoverProps> = ({
       return null;
     }
   });
+
+  // Subscribe to network condition changes (PONTO 4: Data-Saver & Network Awareness)
+  useEffect(() => {
+    const unsubscribe = dataSaver.subscribe((event) => {
+      if (event === 'network_change' || event === 'settings_change') {
+        setNetworkCondition(dataSaver.detectCurrentNetworkCondition());
+      }
+    });
+    return unsubscribe;
+  }, []);
 
   // Evaluate discovery feed on dependencies change
   useEffect(() => {
@@ -189,7 +203,9 @@ export const Discover: React.FC<DiscoverProps> = ({
       signals
     );
 
-    setCandidates(state.candidates);
+    // Apply progressive loading: First meaningful screen < 150 KB
+    const progressiveCandidates = state.candidates.map(c => dataSaver.createProgressiveCandidateShell(c));
+    setCandidates(progressiveCandidates);
     setCurrentIndex(state.currentIndex);
     setAvailability(state.availability);
     setExpansionLevel(state.currentExpansionLevel);
@@ -486,6 +502,15 @@ export const Discover: React.FC<DiscoverProps> = ({
               <span className="text-[10px] font-semibold bg-rose-50 text-rose-700 px-1.5 py-0.2 rounded border border-rose-200">
                 {currentIndex + 1} de {candidates.length}
               </span>
+              {networkCondition.category !== 'HIGH_SPEED_4G' && (
+                <span
+                  className="hidden sm:inline-flex items-center gap-1 text-[9px] font-semibold bg-amber-50 text-amber-800 px-1.5 py-0.2 rounded border border-amber-200"
+                  title={`Rede: ${networkCondition.category} · Orçamento de tela inicial: <${networkCondition.budgetKbTarget} KB`}
+                >
+                  <Wifi className="w-2.5 h-2.5 text-amber-600" />
+                  <span>{networkCondition.category === 'CONSTRAINED_2G' ? '2G (<120KB)' : networkCondition.category === 'OFFLINE' ? 'Offline' : '3G Eco'}</span>
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-stone-500 font-medium">
               Avaliação orientada por Razão, Cultura e Diálogo

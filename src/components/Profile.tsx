@@ -84,6 +84,7 @@ export const Profile: React.FC<ProfileProps> = ({
   const [telemetry, setTelemetry] = useState<BandwidthTelemetry>(() => dataSaver.getTelemetry());
   const [offlineQueue, setOfflineQueue] = useState(() => dataSaver.getQueue());
   const [networkMode, setNetworkMode] = useState<SimulatedNetworkMode>(() => dataSaver.getSimulatedMode());
+  const [networkCondition, setNetworkCondition] = useState(() => dataSaver.detectCurrentNetworkCondition());
   const [isFlushing, setIsFlushing] = useState(false);
   const [mcrMetrics, setMcrMetrics] = useState(() => connectionGraph.calculateMCRMetrics());
   const [userMemory, setUserMemory] = useState(() => relationalMemory.getMemoryForUser(profile.uid));
@@ -98,7 +99,11 @@ export const Profile: React.FC<ProfileProps> = ({
     const unsubscribeDataSaver = dataSaver.subscribe((event) => {
       if (event === 'telemetry_change') setTelemetry(dataSaver.getTelemetry());
       if (event === 'queue_change') setOfflineQueue(dataSaver.getQueue());
-      if (event === 'network_change') setNetworkMode(dataSaver.getSimulatedMode());
+      if (event === 'network_change' || event === 'settings_change') {
+        setNetworkMode(dataSaver.getSimulatedMode());
+        setNetworkCondition(dataSaver.detectCurrentNetworkCondition());
+        setDataSaverSettings(dataSaver.getSettings());
+      }
     });
 
     const unsubscribeMemory = relationalMemory.subscribe((uid) => {
@@ -506,26 +511,80 @@ export const Profile: React.FC<ProfileProps> = ({
       {/* TAB 4: MODO ECONOMIA DE DADOS & RESILIÊNCIA CPLP (PONTO 4) */}
       {activeTab === 'dataSaver' && (
         <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          {/* Header Banner */}
-          <div className="p-3.5 bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 rounded-xl border border-amber-200/80">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+          {/* Header Banner - Architectural Philosophy */}
+          <div className="p-3.5 bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 rounded-xl border border-amber-200/80 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs font-bold text-amber-950 font-serif">
                 <Wifi className="w-4 h-4 text-amber-600" />
-                <span>Modo Economia de Dados (Conexão CPLP)</span>
+                <span>Economia de Dados & Conexão Lusófona</span>
               </div>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
                 dataSaver.isOnline() ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
               }`}>
                 {dataSaver.isOnline() ? <CheckCircle2 className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                <span>{dataSaver.isOnline() ? 'Online' : 'Offline'}</span>
+                <span>{dataSaver.isOnline() ? 'Conectado' : 'Offline'}</span>
               </span>
             </div>
-            <p className="text-[11px] text-stone-700 leading-relaxed">
-              Separação arquitetural entre visual e economia real de rede. Otimizado para conexões 2G/3G e pacotes tarifados na Lusofonia (AO, BR, CV, GW, MZ, PT, ST, TL).
+            <p className="text-[11px] text-stone-700 leading-relaxed font-sans">
+              "A experiência principal deve continuar excelente mesmo quando a internet não é excelente." Otimizado com arquitetura adaptativa para Angola, Cabo Verde, Guiné-Bissau, Moçambique, Portugal, São Tomé e Timor-Leste.
             </p>
           </div>
 
-          {/* 1. Real Bandwidth Telemetry Dashboard */}
+          {/* 1. Network Awareness & Adaptation Status Card */}
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/90 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                <Radio className="w-3.5 h-3.5 text-rose-600" />
+                <span>Sensibilidade e Estado da Rede</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-rose-50 text-rose-800 rounded-md border border-rose-200">
+                {networkCondition.category}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
+                <span className="text-stone-400 block text-[9px]">Tipo Efetivo</span>
+                <span className="font-bold text-stone-900 uppercase">{networkCondition.effectiveType || '3G'}</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
+                <span className="text-stone-400 block text-[9px]">Latência (RTT)</span>
+                <span className="font-bold text-stone-900">{networkCondition.rttMs ? `${networkCondition.rttMs} ms` : '~300 ms'}</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
+                <span className="text-stone-400 block text-[9px]">Meta Ecrã Inicial</span>
+                <span className="font-bold text-emerald-700 font-mono">&lt; 150 KB</span>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
+                <span className="text-stone-400 block text-[9px]">Autoplay Mídia</span>
+                <span className={`font-bold ${dataSaver.isAutoplayAllowed() ? 'text-amber-700' : 'text-rose-700'}`}>
+                  {dataSaver.isAutoplayAllowed() ? 'Permitido' : 'Bloqueado'}
+                </span>
+              </div>
+            </div>
+
+            {/* Auto-Adaptive Switch */}
+            <div className="flex items-center justify-between pt-1 border-t border-stone-200/70">
+              <div>
+                <h5 className="text-xs font-bold text-stone-900">Adaptação Automática à Rede</h5>
+                <p className="text-[10px] text-stone-600">O sistema deteta a condição da rede (2G/3G/4G) e ajusta imagens e áudio sem intervenção</p>
+              </div>
+              <input
+                type="checkbox"
+                id="toggle-auto-adaptive"
+                checked={dataSaverSettings.mode === 'auto_adaptive'}
+                onChange={e => {
+                  const updated = dataSaver.updateSettings({
+                    mode: e.target.checked ? 'auto_adaptive' : 'manual'
+                  });
+                  setDataSaverSettings(updated);
+                }}
+                className="w-4 h-4 accent-rose-600 cursor-pointer rounded shrink-0 ml-2"
+              />
+            </div>
+          </div>
+
+          {/* 2. Bandwidth & Telemetry Dashboard */}
           <div className="grid grid-cols-2 gap-2">
             <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl">
               <div className="flex items-center justify-between text-emerald-800 mb-1">
@@ -554,83 +613,54 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
           </div>
 
-          {/* 2. Main Data Saver Toggle */}
-          <div className="flex items-center justify-between py-2 border-y border-stone-100">
-            <div>
-              <h4 className="text-xs font-bold text-stone-900">Ativar Economia de Dados</h4>
-              <p className="text-[11px] text-stone-700">Comprimir imagens via CDN e ativar cache agressivo</p>
+          {/* 3. Image Pipeline & Progressive Loading */}
+          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold text-stone-900">Pipeline de Imagens AVIF/WebP</h4>
+                <p className="text-[10px] text-stone-600">Carregamento progressivo de perfis com formato moderno e dimensões responsivas</p>
+              </div>
+              <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
+                AVIF + WebP
+              </span>
             </div>
-            <input
-              type="checkbox"
-              id="toggle-data-saver-switch"
-              checked={dataSaverSettings.enabled}
-              onChange={e => handleToggleDataSaver(e.target.checked)}
-              className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
-            />
+
+            <div className="space-y-2 pt-1">
+              <label className="text-xs font-bold text-stone-900 block">
+                Nível de Compressão (Qualidade Efetiva: {dataSaver.getEffectiveQuality()})
+              </label>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {(
+                  [
+                    { id: 'ultra_low', label: 'Ultra Econômico', weight: '~15-28 KB' },
+                    { id: 'balanced', label: 'Equilibrado', weight: '~45-68 KB' },
+                    { id: 'high', label: 'Qualidade', weight: '~180-350 KB' }
+                  ] as const
+                ).map(lvl => (
+                  <button
+                    key={lvl.id}
+                    type="button"
+                    onClick={() => handleChangeQualityLevel(lvl.id)}
+                    className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center cursor-pointer ${
+                      dataSaverSettings.qualityLevel === lvl.id
+                        ? 'bg-rose-50 border-rose-500 text-rose-900 shadow-2xs font-bold'
+                        : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
+                    }`}
+                  >
+                    <span className="text-[11px]">{lvl.label}</span>
+                    <span className="text-[9px] text-stone-500 mt-0.5 font-mono">{lvl.weight}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
-          {/* 3. Compression Tier Selector */}
-          {dataSaverSettings.enabled && (
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className="text-xs font-bold text-stone-900 block mb-1.5">
-                  Nível Técnico de Resolução e Compressão
-                </label>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  {(
-                    [
-                      { id: 'ultra_low', label: 'Ultra Econômico', weight: '~15-28 KB', color: 'rose' },
-                      { id: 'balanced', label: 'Equilibrado', weight: '~45-68 KB', color: 'amber' },
-                      { id: 'high', label: 'Qualidade', weight: '~180-350 KB', color: 'stone' }
-                    ] as const
-                  ).map(lvl => (
-                    <button
-                      key={lvl.id}
-                      type="button"
-                      onClick={() => handleChangeQualityLevel(lvl.id)}
-                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center ${
-                        dataSaverSettings.qualityLevel === lvl.id
-                          ? 'bg-rose-50 border-rose-500 text-rose-900 shadow-2xs'
-                          : 'bg-stone-50 border-stone-200 text-stone-700 hover:bg-stone-100'
-                      }`}
-                    >
-                      <span className="font-bold text-[11px]">{lvl.label}</span>
-                      <span className="text-[9px] text-stone-700 mt-0.5 font-mono">{lvl.weight}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* On-demand reveal option for Ultra mode */}
-              {dataSaverSettings.qualityLevel === 'ultra_low' && (
-                <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200/60 flex items-center justify-between">
-                  <div className="pr-2">
-                    <span className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                      <Eye className="w-3.5 h-3.5 text-amber-600" />
-                      <span>Toque para Carregar Fotos</span>
-                    </span>
-                    <p className="text-[10px] text-amber-800/90 mt-0.5 leading-snug">
-                      Pausa fotos grandes no Discover. Só descarrega se você tocar para inspecionar.
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="toggle-tap-to-load"
-                    checked={dataSaverSettings.loadThumbnailsOnly}
-                    onChange={e => handleToggleThumbnailsOnly(e.target.checked)}
-                    className="w-4 h-4 accent-amber-600 cursor-pointer rounded shrink-0"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* 4. Persistent Offline Queue Manager */}
+          {/* 4. Persistent Offline Queue Manager & Idempotent Sync */}
           <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
                 <Database className="w-3.5 h-3.5 text-rose-600" />
-                <span>Fila Offline Persistente</span>
+                <span>Fila Offline & Sincronização Idempotente</span>
               </span>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-stone-200 text-stone-800 rounded-full">
                 {offlineQueue.length} {offlineQueue.length === 1 ? 'evento pendente' : 'eventos pendentes'}
@@ -638,17 +668,17 @@ export const Profile: React.FC<ProfileProps> = ({
             </div>
 
             <p className="text-[11px] text-stone-600 leading-relaxed">
-              Suas aproximações (likes), descartes, mensagens e feedbacks são salvos em fila criptografada localmente. O envio é disparado automaticamente assim que a conexão restabelece.
+              Suas ações são salvas com chaves de idempotência únicas localmente. Em caso de reconexão intermitente, retentativas nunca duplicam escritas no Firestore.
             </p>
 
             {offlineQueue.length > 0 && (
               <div className="space-y-1.5 pt-1">
-                <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
                   {offlineQueue.map((item) => (
                     <div key={item.id} className="text-[10px] bg-white p-2 rounded-lg border border-stone-200 flex items-center justify-between font-mono text-stone-700">
                       <span className="font-semibold text-rose-700 uppercase">[{item.type}]</span>
                       <span>{new Date(item.enqueuedAt).toLocaleTimeString()}</span>
-                      <span className="text-stone-400">tentativas: {item.retryCount}</span>
+                      <span className="text-stone-400">idemp: {item.idempotencyKey ? item.idempotencyKey.substring(0, 14) + '...' : 'auto'}</span>
                     </div>
                   ))}
                 </div>
@@ -660,7 +690,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   className="w-full py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isFlushing ? 'animate-spin' : ''}`} />
-                  <span>{isFlushing ? 'Sincronizando Fila...' : 'Forçar Sincronização Agora'}</span>
+                  <span>{isFlushing ? 'Sincronizando com Firestore...' : 'Sincronizar Fila Agora'}</span>
                 </button>
               </div>
             )}
@@ -688,6 +718,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   { id: 'real', label: 'Rede Real (Dispositivo)' },
                   { id: 'wifi_4g', label: 'WiFi / 4G Rápido' },
                   { id: '3g_balanced', label: '3G Médio (Luanda/Mindelo)' },
+                  { id: '2g_edge', label: '2G Edge (< 150KB Target)' },
                   { id: 'offline_simulated', label: 'Offline Simulado' }
                 ] as const
               ).map((mode) => (
@@ -709,7 +740,7 @@ export const Profile: React.FC<ProfileProps> = ({
             {networkMode === 'offline_simulated' && (
               <div className="p-2 bg-rose-950/80 border border-rose-800/80 rounded-lg text-[10px] text-rose-200 flex items-center gap-1.5">
                 <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                <span>Modo Offline simulado ativo. Todas as ações entrarão na fila persistente local.</span>
+                <span>Modo Offline simulado ativo. Todas as ações entrarão na fila persistente local com chave de idempotência.</span>
               </div>
             )}
           </div>

@@ -13,6 +13,7 @@ import {
   TrustBadge
 } from '../types';
 import { db, doc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from '../firebase/config';
+import { logMcrTransition, mcrEventLogger } from './mcrEventLogger';
 
 export type CommunicationStyle = 'reflective' | 'expressive' | 'direct' | 'warm';
 export type ConversationalDepth = 'light' | 'moderate' | 'deep';
@@ -409,7 +410,7 @@ export class HumanConnectionGraph {
   }
 
   /**
-   * PONTO 1: Track connection funnel progression (MCR Telemetry)
+   * PONTO 1: Track connection funnel progression (MCR Telemetry & Auditable Backend Persistence)
    */
   public async recordFunnelEvent(eventData: {
     userId: string;
@@ -418,11 +419,13 @@ export class HumanConnectionGraph {
     countryPair: [CPLPCountryCode, CPLPCountryCode];
     communityTag?: string;
     discoveryOrigin?: string;
+    previousStage?: MCRFunnelStage | string;
     metadata?: Record<string, unknown>;
   }): Promise<ConnectionFunnelEvent> {
     const origin = eventData.discoveryOrigin || (eventData.metadata?.discoveryOrigin as string) || (eventData.metadata?.discoveryMode as string) || 'VALUES_AFFINITY';
+    const now = Date.now();
     const event: ConnectionFunnelEvent = {
-      id: `mcr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      id: `mcr_${now}_${Math.random().toString(36).substring(2, 7)}`,
       userId: eventData.userId,
       targetUid: eventData.targetUid,
       stage: eventData.stage,
@@ -433,22 +436,26 @@ export class HumanConnectionGraph {
         ...eventData.metadata,
         discoveryOrigin: origin
       } as ConnectionFunnelEvent['metadata'],
-      timestamp: Date.now()
+      timestamp: now
     };
 
     this.inMemoryEvents.push(event);
     this.persistLocal();
 
-    // Async persist to Firestore non-blocking
-    try {
-      await setDoc(doc(db, 'connection_events', event.id), {
-        ...event,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch (e) {
-      // Offline fallback
-      console.info('Connection funnel event queued locally:', event.stage);
-    }
+    // Persist as an auditable document in Firestore through McrEventLogger Backend Service
+    logMcrTransition({
+      userId: eventData.userId,
+      targetUid: eventData.targetUid,
+      stage: eventData.stage,
+      previousStage: eventData.previousStage,
+      countryPair: eventData.countryPair,
+      communityTag: eventData.communityTag,
+      discoveryOrigin: origin,
+      metadata: event.metadata,
+      clientTimestamp: now
+    }).catch(err => {
+      console.warn('MCR transition logging non-blocking fallback:', err);
+    });
 
     return event;
   }

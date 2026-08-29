@@ -78,6 +78,8 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
     qualityOverride: revealedManually ? 'high' : undefined
   });
 
+  const responsiveSet = dataSaver.getResponsiveImageSet(src, variant as 'avatar' | 'card' | 'thumbnail' | 'full');
+
   const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
     setIsLoaded(true);
     setHasError(false);
@@ -154,21 +156,37 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = ({
         </div>
       )}
 
-      {/* 4. Genuine Image Element with Lazy Loading and Async Decoding */}
+      {/* 4. Genuine Responsive Image Element with AVIF/WebP Picture, Lazy Loading and Async Decoding */}
       {isVisible && !requiresManualReveal && (
-        <img
-          src={optimizedUrl}
-          alt={alt}
-          loading={priority ? 'eager' : 'lazy'}
-          decoding="async"
-          onLoad={handleImageLoad}
-          onError={handleImageError}
-          referrerPolicy="no-referrer"
-          className={`w-full h-full object-cover transition-opacity duration-300 ${
-            isLoaded ? 'opacity-100' : 'opacity-0'
-          }`}
-          {...imgProps}
-        />
+        <picture className="w-full h-full block">
+          {responsiveSet.srcSetAvif && (
+            <source
+              type="image/avif"
+              srcSet={responsiveSet.srcSetAvif}
+              sizes={responsiveSet.sizes}
+            />
+          )}
+          {responsiveSet.srcSetWebp && (
+            <source
+              type="image/webp"
+              srcSet={responsiveSet.srcSetWebp}
+              sizes={responsiveSet.sizes}
+            />
+          )}
+          <img
+            src={optimizedUrl}
+            alt={alt}
+            loading={priority ? 'eager' : 'lazy'}
+            decoding="async"
+            onLoad={handleImageLoad}
+            onError={handleImageError}
+            referrerPolicy="no-referrer"
+            className={`w-full h-full object-cover transition-opacity duration-300 ${
+              isLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            {...imgProps}
+          />
+        </picture>
       )}
 
       {/* 5. Optional Savings Diagnostic Badge */}

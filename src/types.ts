@@ -509,6 +509,62 @@ export type DiscoveryOriginTag =
   | 'COMMUNITY_QUESTION'
   | 'DIRECT_SEARCH';
 
+// -------------------------------------------------------------
+// PONTO 1.1: McrEventLogger Backend & Audit Persistence Types
+// -------------------------------------------------------------
+export interface McrAuditTrail {
+  loggedAt: string; // ISO 8601 string
+  timestamp: number; // numeric epoch
+  serverTimestamp?: unknown; // Firestore server timestamp
+  clientTimestamp?: number;
+  ipOrOrigin?: string;
+  userAgent?: string;
+  isAudited: boolean;
+  auditSource: 'mcr_backend_logger' | 'mcr_client_fallback';
+  transitionIntegrity: 'VALID' | 'UNORDERED_SKIP' | 'REGRESSION' | 'INITIAL';
+  stageRank: number; // 1 to 8
+  environment?: string;
+  sessionId?: string;
+}
+
+export interface McrAuditEvent {
+  id: string;
+  userId: string;
+  targetUid: string;
+  stage: MCRFunnelStage;
+  previousStage?: MCRFunnelStage | string;
+  stageRank: number;
+  countryPair: [CPLPCountryCode, CPLPCountryCode];
+  discoveryOrigin: DiscoveryOriginTag | string;
+  communityTag?: string;
+  metadata?: Record<string, unknown>;
+  audit: McrAuditTrail;
+  timestamp: number;
+  createdAt: number;
+}
+
+export interface McrEventPayload {
+  userId: string;
+  targetUid: string;
+  stage: MCRFunnelStage | string;
+  previousStage?: MCRFunnelStage | string;
+  countryPair: [CPLPCountryCode, CPLPCountryCode];
+  discoveryOrigin?: string;
+  communityTag?: string;
+  metadata?: Record<string, unknown>;
+  clientTimestamp?: number;
+  sessionId?: string;
+}
+
+export interface McrAuditQueryFilters {
+  userId?: string;
+  targetUid?: string;
+  stage?: MCRFunnelStage | string;
+  origin?: string;
+  timeframe?: '7d' | '30d' | 'all';
+  limitCount?: number;
+}
+
 export interface ConnectionFunnelEvent {
   id: string;
   userId: string;
@@ -800,22 +856,45 @@ export interface PrivateTrustGraphEvaluation {
 }
 
 // -------------------------------------------------------------
-// PONTO 4: Data Saver & CPLP Offline-Resilience Contracts
+// PONTO 4: Data Saver & CPLP Offline-Resilience Contracts (Architectural Philosophy)
 // -------------------------------------------------------------
+export type NetworkEffectiveType = 'slow-2g' | '2g' | '3g' | '4g' | 'unknown';
+export type NetworkStateCategory = 'OFFLINE' | 'CONSTRAINED_2G' | 'BALANCED_3G' | 'HIGH_SPEED_4G';
+
+export interface NetworkCondition {
+  isOnline: boolean;
+  effectiveType: NetworkEffectiveType;
+  saveData: boolean; // navigator.connection.saveData (header Client Hint Save-Data)
+  downlinkMbps?: number;
+  rttMs?: number;
+  category: NetworkStateCategory;
+  isAutoAdapted: boolean;
+  budgetKbTarget: number; // Target initial screen payload budget (e.g. 150 KB)
+  canAutoplayMedia: boolean; // Always false on constrained networks
+  supportsAvif: boolean;
+  supportsWebp: boolean;
+}
+
 export interface DataSaverSettings {
   enabled: boolean;
+  mode: 'auto_adaptive' | 'manual'; // Auto-adaptive recognizes network conditions seamlessly
   qualityLevel: 'ultra_low' | 'balanced' | 'high';
-  autoDownloadAudio: boolean;
+  autoDownloadAudio: boolean; // Default false on constrained networks
   loadThumbnailsOnly: boolean;
   offlineQueueSyncEnabled: boolean;
+  avifWebpPreferred: boolean;
+  progressiveProfileLoading: boolean; // First screen <150KB, secondary fields on-demand
 }
 
 export interface OfflineQueuedEvent {
   id: string;
-  type: 'like' | 'pass' | 'message' | 'telemetry' | 'outcome';
+  idempotencyKey: string; // Idempotent key to prevent double actions in Firestore
+  type: 'like' | 'pass' | 'message' | 'telemetry' | 'outcome' | 'mcr_event';
   payload: Record<string, unknown>;
   enqueuedAt: number;
   retryCount: number;
+  lastAttemptAt?: number;
+  synced?: boolean;
 }
 
 // 4.22 & 4.23: Discovery Availability Status

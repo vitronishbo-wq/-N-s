@@ -83,6 +83,27 @@
         "submittedAt": { "type": "number" }
       },
       "required": ["id", "userId", "evidenceType", "status"]
+    },
+    "McrAuditEvent": {
+      "title": "McrAuditEvent",
+      "description": "Auditable, immutable transition event in the 8-stage Meaningful Connection Rate funnel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "targetUid": { "type": "string" },
+        "stage": { "type": "string" },
+        "stageRank": { "type": "number" },
+        "previousStage": { "type": "string" },
+        "countryPair": { "type": "array" },
+        "discoveryOrigin": { "type": "string" },
+        "communityTag": { "type": "string" },
+        "metadata": { "type": "object" },
+        "audit": { "type": "object" },
+        "timestamp": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "targetUid", "stage", "countryPair", "audit", "timestamp"]
     }
   },
   "firestore": {
@@ -109,6 +130,14 @@
     "/verification_requests/{requestId}": {
       "schema": "VerificationRequest",
       "description": "Identity verification submission queue"
+    },
+    "/mcr_audit_events/{eventId}": {
+      "schema": "McrAuditEvent",
+      "description": "Immutable audit log of MCR funnel stage transitions (IMPRESSION to MEANINGFUL_CONNECTION)"
+    },
+    "/connection_events/{eventId}": {
+      "schema": "McrAuditEvent",
+      "description": "Real-time connection funnel telemetry events mirroring MCR transitions"
     }
   }
 }

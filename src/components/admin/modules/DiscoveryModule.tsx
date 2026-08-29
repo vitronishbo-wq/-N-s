@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ModuleProps } from '../moduleRegistry';
 import { DiscoveryService, ExpansionPolicy } from '../../../services/admin/discoveryService';
 import { RbacService } from '../../../services/admin/rbacService';
 import { connectionGraph } from '../../../services/connectionGraph';
-import { CPLPCountryCode } from '../../../types';
+import { mcrEventLogger } from '../../../services/mcrEventLogger';
+import { CPLPCountryCode, McrAuditEvent } from '../../../types';
 import {
   Compass,
   Cpu,
@@ -25,7 +26,10 @@ import {
   Activity,
   ShieldCheck,
   ChevronRight,
-  Info
+  Info,
+  Database,
+  RefreshCw,
+  FileCheck
 } from 'lucide-react';
 
 const COUNTRY_NAMES: Record<CPLPCountryCode, { name: string; flag: string }> = {
@@ -59,6 +63,33 @@ export const DiscoveryModule: React.FC<DiscoveryModuleProps> = ({
   const [rankingFactors, setRankingFactors] = useState(discoveryService.getRankingFactors());
   const [diversity] = useState(discoveryService.getDiversityConfig());
   const [mcrTimeframe, setMcrTimeframe] = useState<'7d' | '30d' | 'all'>('7d');
+  const [auditLogs, setAuditLogs] = useState<McrAuditEvent[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState<boolean>(false);
+
+  const fetchAuditLogs = async () => {
+    setLoadingAudit(true);
+    try {
+      // Try backend audit endpoint first
+      const res = await fetch(`/api/mcr/audit?timeframe=${mcrTimeframe}&limit=50`);
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data.events || []);
+      } else {
+        // Fallback to direct service
+        const logs = await mcrEventLogger.queryAuditEvents({ timeframe: mcrTimeframe, limitCount: 50 });
+        setAuditLogs(logs);
+      }
+    } catch {
+      const logs = await mcrEventLogger.queryAuditEvents({ timeframe: mcrTimeframe, limitCount: 50 });
+      setAuditLogs(logs);
+    } finally {
+      setLoadingAudit(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [mcrTimeframe]);
 
   const mcrMetrics = connectionGraph.calculateMCRMetrics({ timeframe: mcrTimeframe });
 
@@ -639,6 +670,116 @@ export const DiscoveryModule: React.FC<DiscoveryModuleProps> = ({
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* FIRESTORE AUDIT TRAIL: McrEventLogger REGISTRY */}
+          <div className="bg-white rounded-2xl p-6 border border-stone-200 shadow-2xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                    <Database className="w-3 h-3 text-emerald-600" />
+                    FIRESTORE AUDIT LOG
+                  </span>
+                  <span className="text-xs text-stone-700 font-medium">McrEventLogger Backend Persistence</span>
+                </div>
+                <h3 className="text-base font-bold text-stone-900 mt-1">Livro de Auditoria de Transições MCR (/mcr_audit_events)</h3>
+                <p className="text-xs text-stone-700 mt-0.5">
+                  Cada transição de estado (de IMPRESSION a MEANINGFUL_CONNECTION) é persistida como um documento imutável e auditável no Firestore.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={fetchAuditLogs}
+                disabled={loadingAudit}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-100 hover:bg-stone-200 text-stone-800 transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingAudit ? 'animate-spin' : ''}`} />
+                Atualizar Auditoria
+              </button>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-stone-200 max-h-80 overflow-y-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-stone-200 text-stone-700 font-bold uppercase tracking-wider bg-stone-50 sticky top-0 z-10">
+                    <th className="py-2.5 px-3">Document ID</th>
+                    <th className="py-2.5 px-2">Estágio Canónico</th>
+                    <th className="py-2.5 px-2">Corredor CPLP</th>
+                    <th className="py-2.5 px-2">Origem</th>
+                    <th className="py-2.5 px-2">Integridade</th>
+                    <th className="py-2.5 px-2">Timestamp Auditado</th>
+                    <th className="py-2.5 px-3 text-right">Fonte</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-stone-100">
+                  {auditLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-6 text-center text-stone-400">
+                        {loadingAudit ? 'A carregar registos auditados do Firestore...' : 'Nenhum registo de transição encontrado para o filtro selecionado.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    auditLogs.map(log => {
+                      const stageColor: Record<string, string> = {
+                        IMPRESSION: 'bg-stone-100 text-stone-700',
+                        QUALIFIED_DISCOVERY: 'bg-indigo-50 text-indigo-700 border border-indigo-200',
+                        INTENTIONAL_INTEREST: 'bg-pink-50 text-pink-700 border border-pink-200',
+                        MUTUAL_INTEREST: 'bg-rose-50 text-rose-700 border border-rose-200',
+                        CONVERSATION_STARTED: 'bg-purple-50 text-purple-700 border border-purple-200',
+                        MEANINGFUL_RECIPROCITY: 'bg-blue-50 text-blue-700 border border-blue-200',
+                        CONTINUITY: 'bg-amber-50 text-amber-700 border border-amber-200',
+                        MEANINGFUL_CONNECTION: 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      };
+
+                      return (
+                        <tr key={log.id} className="hover:bg-stone-50 transition font-mono">
+                          <td className="py-2 px-3 text-[11px] text-stone-800 truncate max-w-[140px]" title={log.id}>
+                            {log.id}
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full font-sans ${stageColor[log.stage] || 'bg-stone-100 text-stone-700'}`}>
+                              {log.stage}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 text-[11px] text-stone-700">
+                            {log.countryPair ? `${log.countryPair[0]} ↔ ${log.countryPair[1]}` : 'CPLP'}
+                          </td>
+                          <td className="py-2 px-2 text-[11px] text-stone-700 font-sans">
+                            {log.discoveryOrigin || 'VALUES_AFFINITY'}
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-sans ${
+                              log.audit?.transitionIntegrity === 'VALID' || log.audit?.transitionIntegrity === 'INITIAL'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {log.audit?.transitionIntegrity || 'VALID'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 text-[11px] text-stone-700 font-sans">
+                            {new Date(log.timestamp).toLocaleString('pt-PT', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit'
+                            })}
+                          </td>
+                          <td className="py-2 px-3 text-right text-[10px] text-stone-700 font-sans">
+                            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                              <FileCheck className="w-3 h-3 text-emerald-600" />
+                              {log.audit?.auditSource || 'backend'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
