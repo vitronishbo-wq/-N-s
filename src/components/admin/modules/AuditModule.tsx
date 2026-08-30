@@ -86,7 +86,7 @@ export const AuditModule: React.FC<ModuleProps> = () => {
 
                 <div className="flex items-center gap-1 text-[11px] text-stone-700 font-mono">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>{new Date(log.timestamp).toLocaleString()}</span>
+                  <span>{log?.timestamp ? new Date(log.timestamp).toLocaleString('pt-PT') : '-'}</span>
                 </div>
               </div>
 

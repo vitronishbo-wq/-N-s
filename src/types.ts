@@ -229,11 +229,60 @@ export interface AuthUser {
   uid: string;
   isAnonymous: boolean;
   email?: string | null;
+  emailVerified?: boolean;
   phoneNumber?: string | null;
   createdAt: number;
   lastLoginAt: number;
   linkedProviders?: string[];
+  lastReauthAt?: number;
 }
+
+export type AuthProviderType = 'anonymous' | 'password' | 'google.com' | 'phone';
+
+export interface UserSession {
+  sessionId: string;
+  userId: string;
+  deviceName: string;
+  browser: string;
+  os: string;
+  ipAddress?: string;
+  approxLocation?: string;
+  createdAt: number;
+  lastActiveAt: number;
+  isCurrent: boolean;
+  status: 'active' | 'revoked';
+}
+
+export type SensitiveOperationType =
+  | 'delete_account'
+  | 'change_password'
+  | 'change_email'
+  | 'export_data_archive'
+  | 'revoke_all_sessions'
+  | 'unlink_identity';
+
+export interface SecurityAuditEvent {
+  id: string;
+  userId: string;
+  eventType:
+    | 'ACCOUNT_CREATED'
+    | 'ANONYMOUS_LOGIN'
+    | 'EMAIL_PASSWORD_LOGIN'
+    | 'GOOGLE_LOGIN'
+    | 'ACCOUNT_LINKED'
+    | 'PASSWORD_CHANGED'
+    | 'EMAIL_CHANGED'
+    | 'PASSWORD_RESET_REQUESTED'
+    | 'SESSION_REVOKED'
+    | 'SENSITIVE_REAUTH_SUCCESS'
+    | 'SENSITIVE_REAUTH_FAILED'
+    | 'ACCOUNT_DELETED';
+  ipApprox?: string;
+  userAgent?: string;
+  details?: Record<string, unknown>;
+  timestamp: number;
+}
+
 
 export interface UserProfile {
   uid: string;
@@ -786,12 +835,63 @@ export interface TrustEvidenceRecord {
   id: string;
   userId: string;
   type: TrustEvidenceType;
-  source: 'system_crypto_validation' | 'backend_policy_engine' | 'admin_moderator_audit' | 'biometric_provider';
+  source: 'system_crypto_validation' | 'backend_policy_engine' | 'admin_moderator_audit' | 'biometric_provider' | 'national_registry_verifier' | 'telecom_carrier_proof';
   status: 'verified' | 'pending' | 'rejected' | 'revoked';
   verifiedAt: number;
   expiresAt?: number;
   auditedBy?: string;
   metadata?: Record<string, unknown>;
+}
+
+export interface ImmutableTrustEvidenceRecord {
+  id: string;
+  userId: string;
+  type: TrustEvidenceType;
+  source: 'biometric_provider' | 'national_registry_verifier' | 'system_crypto_validation' | 'admin_moderator_audit' | 'telecom_carrier_proof';
+  status: 'verified' | 'pending' | 'rejected' | 'revoked';
+  evidenceHash: string; // SHA-256 fingerprint
+  authoritySignature: string; // HMAC SHA-256 signature issued by verification authority
+  verifiedAt: number;
+  expiresAt?: number;
+  auditedBy: string;
+  verificationDetails: {
+    documentType?: 'NATIONAL_ID' | 'PASSPORT' | 'DRIVING_LICENSE' | 'RESIDENCE_PERMIT';
+    countryCode?: CPLPCountryCode;
+    documentNumberMasked?: string;
+    documentFormatValid?: boolean;
+    biometricLivenessScore?: number; // 0.0 - 1.0 (e.g. 0.94)
+    faceMatchParityScore?: number; // 0.0 - 1.0 (e.g. 0.96)
+    antiSpoofingPassed?: boolean;
+    phoneCarrierVerified?: boolean;
+    safetyTenureDaysAttested?: number;
+    auditedMcrConversations?: number;
+    verificationNotes?: string;
+  };
+}
+
+export interface VerificationSubmissionPayload {
+  userId: string;
+  evidenceType: TrustEvidenceType;
+  documentPayload?: {
+    countryCode: CPLPCountryCode;
+    documentType: 'NATIONAL_ID' | 'PASSPORT' | 'DRIVING_LICENSE' | 'RESIDENCE_PERMIT';
+    documentNumber: string;
+    fullName: string;
+    birthDate?: string;
+    expiryDate?: string;
+    documentFrontImageBase64?: string;
+  };
+  biometricPayload?: {
+    selfieLivenessBase64?: string;
+    livenessChallengesPassed?: string[]; // e.g. ['blink_detection', 'head_turn_left', 'smile_detection']
+    captureTimestamp?: number;
+    deviceSensorIntegrity?: boolean;
+  };
+  telecomPayload?: {
+    phoneNumber: string;
+    countryCode: CPLPCountryCode;
+    smsVerificationCode?: string;
+  };
 }
 
 export interface PrivateTrustSignals {

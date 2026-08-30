@@ -4,6 +4,7 @@ import { DiscoveryService, ExpansionPolicy } from '../../../services/admin/disco
 import { RbacService } from '../../../services/admin/rbacService';
 import { connectionGraph } from '../../../services/connectionGraph';
 import { mcrEventLogger } from '../../../services/mcrEventLogger';
+import { authService } from '../../../services/authService';
 import { CPLPCountryCode, McrAuditEvent } from '../../../types';
 import {
   Compass,
@@ -70,7 +71,10 @@ export const DiscoveryModule: React.FC<DiscoveryModuleProps> = ({
     setLoadingAudit(true);
     try {
       // Try backend audit endpoint first
-      const res = await fetch(`/api/mcr/audit?timeframe=${mcrTimeframe}&limit=50`);
+      const headers = await authService.getAuthHeaders();
+      const res = await fetch(`/api/mcr/audit?timeframe=${mcrTimeframe}&limit=50`, {
+        headers
+      });
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data.events || []);
@@ -762,13 +766,15 @@ export const DiscoveryModule: React.FC<DiscoveryModuleProps> = ({
                             </span>
                           </td>
                           <td className="py-2 px-2 text-[11px] text-stone-700 font-sans">
-                            {new Date(log.timestamp).toLocaleString('pt-PT', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit'
-                            })}
+                            {log?.timestamp
+                              ? new Date(log.timestamp).toLocaleString('pt-PT', {
+                                  day: '2-digit',
+                                  month: '2-digit',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit'
+                                })
+                              : '-'}
                           </td>
                           <td className="py-2 px-3 text-right text-[10px] text-stone-700 font-sans">
                             <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
@@ -826,7 +832,7 @@ export const DiscoveryModule: React.FC<DiscoveryModuleProps> = ({
 
                       <div className="mt-3 text-xs text-stone-700 flex justify-between">
                         <span>Perfis Ativos:</span>
-                        <strong className="font-mono text-stone-900">{loc.activeProfiles.toLocaleString()}</strong>
+                        <strong className="font-mono text-stone-900">{(loc?.activeProfiles ?? 0).toLocaleString()}</strong>
                       </div>
                     </div>
 

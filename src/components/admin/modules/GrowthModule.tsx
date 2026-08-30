@@ -93,7 +93,7 @@ export const GrowthModule: React.FC<ModuleProps & { activeSubmoduleId?: string }
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-stone-900">{step.name}</span>
                     <div className="flex items-center gap-3">
-                      <span className="font-mono font-bold text-stone-700">{step.count.toLocaleString()} utilizadores</span>
+                      <span className="font-mono font-bold text-stone-700">{(step?.count ?? 0).toLocaleString()} utilizadores</span>
                       <span className="font-mono font-bold text-emerald-600">({step.percent}%)</span>
                       {idx > 0 && <span className="font-mono text-[10px] text-rose-600">{step.dropoff}</span>}
                     </div>
@@ -175,7 +175,7 @@ export const GrowthModule: React.FC<ModuleProps & { activeSubmoduleId?: string }
 
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="font-mono font-bold text-stone-900">{camp.conversionsCount.toLocaleString()}</div>
+                      <div className="font-mono font-bold text-stone-900">{(camp?.conversionsCount ?? 0).toLocaleString()}</div>
                       <div className="text-[10px] text-stone-700">conversões</div>
                     </div>
 

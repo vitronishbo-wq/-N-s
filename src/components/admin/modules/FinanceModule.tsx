@@ -29,7 +29,7 @@ export const FinanceModule: React.FC<ModuleProps> = () => {
         <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-2xs">
           <span className="text-xs text-stone-700">MRR Recorrente</span>
           <p className="text-xl font-bold text-stone-900 mt-1 font-mono">
-            €{ledger.mrrEur.toLocaleString()}
+            €{(ledger?.mrrEur ?? 0).toLocaleString()}
           </p>
           <span className="text-[10px] text-emerald-600 font-medium">+14.2% este mês</span>
         </div>
@@ -37,7 +37,7 @@ export const FinanceModule: React.FC<ModuleProps> = () => {
         <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-2xs">
           <span className="text-xs text-stone-700">Receita Total (30d)</span>
           <p className="text-xl font-bold text-stone-900 mt-1 font-mono">
-            €{ledger.totalRevenueEur30d.toLocaleString()}
+            €{(ledger?.totalRevenueEur30d ?? 0).toLocaleString()}
           </p>
           <span className="text-[10px] text-stone-700 font-medium">9 países</span>
         </div>
@@ -45,7 +45,7 @@ export const FinanceModule: React.FC<ModuleProps> = () => {
         <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-2xs">
           <span className="text-xs text-stone-700">Assinaturas Ativas</span>
           <p className="text-xl font-bold text-stone-900 mt-1 font-mono">
-            {ledger.activeSubscriptionsCount}
+            {ledger?.activeSubscriptionsCount ?? 0}
           </p>
           <span className="text-[10px] text-emerald-600 font-medium">Churn &lt; 1.2%</span>
         </div>
@@ -53,7 +53,7 @@ export const FinanceModule: React.FC<ModuleProps> = () => {
         <div className="bg-white rounded-xl p-4 border border-stone-200 shadow-2xs">
           <span className="text-xs text-stone-700">ARPU Médio</span>
           <p className="text-xl font-bold text-stone-900 mt-1 font-mono">
-            €{ledger.arpuEur.toFixed(2)}
+            €{(ledger?.arpuEur ?? 0).toFixed(2)}
           </p>
           <span className="text-[10px] text-stone-700 font-medium">Por utilizador pagante</span>
         </div>
@@ -63,10 +63,10 @@ export const FinanceModule: React.FC<ModuleProps> = () => {
       <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs space-y-3 text-xs">
         <h3 className="font-bold text-stone-900 text-sm">Distribuição de Receita por País Lusófono</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-1">
-          {Object.entries(ledger.countryRevenuesEur).map(([code, val]) => (
+          {Object.entries(ledger?.countryRevenuesEur || {}).map(([code, val]) => (
             <div key={code} className="p-3 bg-stone-50 rounded-xl border border-stone-200/80">
               <span className="text-xs font-bold text-stone-800 uppercase font-mono">{code}</span>
-              <p className="text-sm font-bold text-stone-900 mt-0.5 font-mono">€{val.toLocaleString()}</p>
+              <p className="text-sm font-bold text-stone-900 mt-0.5 font-mono">€{(val ?? 0).toLocaleString()}</p>
             </div>
           ))}
         </div>

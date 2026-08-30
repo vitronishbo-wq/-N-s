@@ -170,7 +170,7 @@ export const GovernanceModule: React.FC<ModuleProps & { activeSubmoduleId?: stri
                         </span>
                       </div>
                       <span className="text-[11px] text-stone-700 font-mono">
-                        {new Date(log.timestamp).toLocaleString('pt-PT')}
+                        {log?.timestamp ? new Date(log.timestamp).toLocaleString('pt-PT') : '-'}
                       </span>
                     </div>
 
@@ -211,7 +211,7 @@ export const GovernanceModule: React.FC<ModuleProps & { activeSubmoduleId?: stri
                 <div><strong>Ação:</strong> <span className="font-mono">{selectedLog.action}</span></div>
                 <div><strong>Operador:</strong> {selectedLog.actorDisplayName} ({selectedLog.actorEmail})</div>
                 <div><strong>Recurso:</strong> {selectedLog.resourceType} ({selectedLog.resourceId})</div>
-                <div><strong>Data:</strong> {new Date(selectedLog.timestamp).toLocaleString('pt-PT')}</div>
+                <div><strong>Data:</strong> {selectedLog?.timestamp ? new Date(selectedLog.timestamp).toLocaleString('pt-PT') : '-'}</div>
               </div>
 
               {selectedLog.previousState || selectedLog.newState ? (

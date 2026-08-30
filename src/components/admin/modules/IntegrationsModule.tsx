@@ -110,9 +110,9 @@ export const IntegrationsModule: React.FC<ModuleProps & { activeSubmoduleId?: st
               <div className="p-4 rounded-xl bg-stone-50 border border-stone-200">
                 <span className="text-xs text-stone-700 block">Tokens Consumidos (30d)</span>
                 <span className="text-lg font-bold font-mono text-stone-900 mt-1 block">
-                  {aiConfig.tokensConsumed30d.toLocaleString()}
+                  {(aiConfig?.tokensConsumed30d ?? 0).toLocaleString()}
                 </span>
-                <span className="text-[10px] text-stone-700 mt-1 block">Latência média: {aiConfig.avgLatencyMs}ms</span>
+                <span className="text-[10px] text-stone-700 mt-1 block">Latência média: {aiConfig?.avgLatencyMs ?? 0}ms</span>
               </div>
             </div>
 

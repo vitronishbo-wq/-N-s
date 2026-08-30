@@ -514,7 +514,7 @@ export const OperationsModule: React.FC<ModuleProps & { activeSubmoduleId?: stri
                     </div>
                     <p className="text-xs text-stone-700 mt-1">{inc.notes}</p>
                     <span className="text-[11px] text-stone-700 mt-1 block">
-                      Componente: {inc.affectedComponent} · Iniciado em: {new Date(inc.startedAt).toLocaleString('pt-PT')}
+                      Componente: {inc.affectedComponent} · Iniciado em: {inc?.startedAt ? new Date(inc.startedAt).toLocaleString('pt-PT') : '-'}
                     </span>
                   </div>
 

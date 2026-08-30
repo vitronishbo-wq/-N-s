@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   UserProfile,
   UserPreferences,
@@ -6,48 +7,61 @@ import {
   CPLPCountryCode,
   RelationshipIntent,
   DataSaverSettings,
-  TrustBadge
+  AuthUser
 } from '../types';
-import { CPLP_COUNTRY_LIST, RELATIONSHIP_INTENTS_CONFIG, NORMALIZED_INTERESTS, CPLP_COUNTRIES } from '../constants';
+import {
+  CPLP_COUNTRY_LIST,
+  RELATIONSHIP_INTENTS_CONFIG,
+  NORMALIZED_INTERESTS,
+  CPLP_COUNTRIES
+} from '../constants';
 import { compressImage } from '../utils/imageCompression';
 import { trustGraph } from '../services/trustGraph';
 import { dataSaver, SimulatedNetworkMode, BandwidthTelemetry } from '../services/dataSaverService';
-import { connectionGraph } from '../services/connectionGraph';
-import { relationalMemory } from '../services/relationalMemory';
+import { authService } from '../services/authService';
+import { AccountSecurityModal } from './auth/AccountSecurityModal';
+import { IdentityVerificationModal } from './profile/IdentityVerificationModal';
 import { OptimizedImage } from './common/OptimizedImage';
+import { ImmutableTrustEvidenceRecord } from '../types';
 import {
   Camera,
   Shield,
   ShieldCheck,
+  ShieldAlert,
   Globe,
   Heart,
   Lock,
-  UserCheck,
   Sparkles,
   Check,
-  Link,
-  Mail,
+  ChevronDown,
+  ChevronRight,
+  Mic,
+  Volume2,
+  Edit3,
+  Sliders,
+  Bell,
   Wifi,
-  WifiOff,
-  Activity,
-  HeartHandshake,
-  Zap,
-  Flame,
-  CheckCircle2,
-  Download,
-  Database,
-  RefreshCw,
+  Moon,
+  Sun,
+  UserX,
+  AlertTriangle,
+  LogOut,
+  KeyRound,
+  Trash2,
   Eye,
-  Radio,
-  Smartphone,
-  Gauge,
-  Brain,
-  Layers,
+  EyeOff,
+  UserCheck,
+  Users,
+  MapPin,
   Compass,
-  ArrowRight,
-  TrendingUp
+  CheckCircle2,
+  Radio,
+  Share2,
+  Plus,
+  Play,
+  Pause,
+  Layers
 } from 'lucide-react';
-import { isGmailConnected } from '../services/gmail';
 
 interface ProfileProps {
   profile: UserProfile;
@@ -70,51 +84,82 @@ export const Profile: React.FC<ProfileProps> = ({
   onUpdateProfile,
   onUpdatePreferences,
   onUpdatePrivacy,
-  onLinkAccount,
-  onOpenKeypad,
-  onOpenGmail
+  onLinkAccount
 }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'safety' | 'dataSaver' | 'memory'>('profile');
-  const [emailInput, setEmailInput] = useState('');
-  const [linking, setLinking] = useState(false);
-  const [linkedSuccess, setLinkedSuccess] = useState(false);
-  const [editingBio, setEditingBio] = useState(profile.bio);
+  // ─────────────────────────────────────────────────────────────
+  // ESTADO DE CONTROLO DE RECOLHIMENTO (100% RECOLHÍVEL & ACORDEÃO SUAVE)
+  // ─────────────────────────────────────────────────────────────
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({
+    identity: true,      // Camada 1 aberta por padrão para experiência acolhedora
+    preferences: false, // Camada 2
+    safety: false,      // Camada 3
+    account: false      // Camada 4
+  });
 
+  const toggleSection = (section: string) => {
+    setOpenSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Sub-modais e fluxos especializados
+  const [isAccountSecurityModalOpen, setIsAccountSecurityModalOpen] = useState(false);
+  const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [immutableEvidences, setImmutableEvidences] = useState<ImmutableTrustEvidenceRecord[]>([]);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(() => authService.getCurrentUser());
+
+  // Estados de edição da Camada 1
+  const [isEditingBio, setIsEditingBio] = useState(false);
+  const [bioText, setBioText] = useState(profile.bio || '');
+  const [isPlayingVoice, setIsPlayingVoice] = useState(false);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [hasVoiceBio, setHasVoiceBio] = useState(true);
+
+  // Estados da Camada 3 (Segurança & Bloqueados & Denúncias)
+  const [blockedUsers, setBlockedUsers] = useState<string[]>([
+    'Utilizador_9842 (Portugal)',
+    'Perfil_Suspeito_104 (Brasil)'
+  ]);
+  const [recentReports, setRecentReports] = useState<string[]>([
+    'Denúncia #49102: SPAM / Bot - Resolvido com sucesso'
+  ]);
+
+  // Estados da Camada 4 (Conta, Aparência, Notificações, Idioma)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [selectedTheme, setSelectedTheme] = useState<'dark' | 'light' | 'system'>('dark');
+  const [selectedLanguage, setSelectedLanguage] = useState<'pt' | 'pt-BR' | 'pt-AO' | 'pt-MZ'>('pt');
+
+  // Economia de Dados (Camada 4 - Conectividade)
   const [dataSaverSettings, setDataSaverSettings] = useState<DataSaverSettings>(() => dataSaver.getSettings());
   const [telemetry, setTelemetry] = useState<BandwidthTelemetry>(() => dataSaver.getTelemetry());
-  const [offlineQueue, setOfflineQueue] = useState(() => dataSaver.getQueue());
-  const [networkMode, setNetworkMode] = useState<SimulatedNetworkMode>(() => dataSaver.getSimulatedMode());
-  const [networkCondition, setNetworkCondition] = useState(() => dataSaver.detectCurrentNetworkCondition());
-  const [isFlushing, setIsFlushing] = useState(false);
-  const [mcrMetrics, setMcrMetrics] = useState(() => connectionGraph.calculateMCRMetrics());
-  const [userMemory, setUserMemory] = useState(() => relationalMemory.getMemoryForUser(profile.uid));
 
   const country = CPLP_COUNTRIES[profile.countryCode];
   const myTrustEvaluation = trustGraph.evaluateTrust(profile);
 
-  useEffect(() => {
-    setMcrMetrics(connectionGraph.calculateMCRMetrics());
-    setUserMemory(relationalMemory.getMemoryForUser(profile.uid));
+  // Galeria de Fotos
+  const userGallery = profile.photos && profile.photos.length > 0
+    ? profile.photos
+    : [
+        profile.profilePhoto,
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=600&auto=format&fit=crop&q=80',
+        'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=600&auto=format&fit=crop&q=80'
+      ];
 
+  useEffect(() => {
+    const unsubscribeAuth = authService.subscribe((u) => setAuthUser(u));
     const unsubscribeDataSaver = dataSaver.subscribe((event) => {
       if (event === 'telemetry_change') setTelemetry(dataSaver.getTelemetry());
-      if (event === 'queue_change') setOfflineQueue(dataSaver.getQueue());
-      if (event === 'network_change' || event === 'settings_change') {
-        setNetworkMode(dataSaver.getSimulatedMode());
-        setNetworkCondition(dataSaver.detectCurrentNetworkCondition());
-        setDataSaverSettings(dataSaver.getSettings());
-      }
+      if (event === 'settings_change') setDataSaverSettings(dataSaver.getSettings());
     });
 
-    const unsubscribeMemory = relationalMemory.subscribe((uid) => {
-      if (uid === profile.uid) {
-        setUserMemory(relationalMemory.getMemoryForUser(profile.uid));
-      }
+    trustGraph.fetchVerifiedImmutableEvidences(profile.uid).then(evs => {
+      if (evs && evs.length > 0) setImmutableEvidences(evs);
     });
 
     return () => {
+      unsubscribeAuth();
       unsubscribeDataSaver();
-      unsubscribeMemory();
     };
   }, [profile.uid]);
 
@@ -126,15 +171,14 @@ export const Profile: React.FC<ProfileProps> = ({
     }
   };
 
-  const handleLinkSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!emailInput.trim()) return;
-    setLinking(true);
-    setTimeout(() => {
-      onLinkAccount(emailInput.trim());
-      setLinking(false);
-      setLinkedSuccess(true);
-    }, 600);
+  const handleVerificationSuccess = (evidence: ImmutableTrustEvidenceRecord) => {
+    setImmutableEvidences(prev => [evidence, ...prev.filter(e => e.id !== evidence.id)]);
+    onUpdateProfile({ verificationStatus: 'verified' });
+  };
+
+  const handleSaveBio = () => {
+    onUpdateProfile({ bio: bioText });
+    setIsEditingBio(false);
   };
 
   const handleToggleDataSaver = (enabled: boolean) => {
@@ -142,744 +186,753 @@ export const Profile: React.FC<ProfileProps> = ({
     setDataSaverSettings(updated);
   };
 
-  const handleChangeQualityLevel = (qualityLevel: DataSaverSettings['qualityLevel']) => {
-    const updated = dataSaver.updateSettings({ qualityLevel });
-    setDataSaverSettings(updated);
+  const handleUnblockUser = (name: string) => {
+    setBlockedUsers(prev => prev.filter(u => u !== name));
   };
-
-  const handleToggleThumbnailsOnly = (loadThumbnailsOnly: boolean) => {
-    const updated = dataSaver.updateSettings({ loadThumbnailsOnly });
-    setDataSaverSettings(updated);
-  };
-
-  const handleManualSync = async () => {
-    setIsFlushing(true);
-    try {
-      await dataSaver.flushQueue();
-      setOfflineQueue(dataSaver.getQueue());
-    } finally {
-      setIsFlushing(false);
-    }
-  };
-
-  const handleChangeNetworkMode = (mode: SimulatedNetworkMode) => {
-    dataSaver.setSimulatedMode(mode);
-    setNetworkMode(mode);
-  };
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  };
-
-  const totalCalculated = telemetry.totalBytesDownloaded + telemetry.totalBytesSaved;
-  const savedPercent = totalCalculated > 0 ? Math.round((telemetry.totalBytesSaved / totalCalculated) * 100) : 0;
 
   return (
-    <div className="flex-1 max-w-md mx-auto w-full p-4 pb-24 sm:pb-8 space-y-4">
-      {/* User Mini Hero */}
-      <div className="bg-white rounded-2xl p-5 border border-stone-200 shadow-2xs flex items-center gap-4">
-        <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-rose-500 shrink-0 bg-stone-100">
-          <OptimizedImage
-            src={profile.profilePhoto}
-            alt={profile.displayName}
-            variant="avatar"
-            className="w-full h-full"
-          />
-          <label
-            htmlFor="profile-photo-upload"
-            className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer text-white hover:bg-black/50 transition z-10"
-          >
-            <Camera className="w-4 h-4" />
-          </label>
-          <input
-            id="profile-photo-upload"
-            type="file"
-            accept="image/*"
-            onChange={handlePhotoUpload}
-            className="hidden"
-          />
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h2 className="font-bold text-stone-900 text-lg truncate">{profile.displayName}</h2>
-            <span className="text-sm font-normal text-stone-700">, {profile.age}</span>
-            {(myTrustEvaluation.signals?.identityEvidenceLevel === 'verified_id' || myTrustEvaluation.signals?.identityEvidenceLevel === 'biometric_cleared' || profile.verificationStatus === 'verified') && (
-              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" title="Identidade Verificada" />
-            )}
-          </div>
-          <p className="text-xs text-stone-700 flex items-center gap-1 mt-0.5">
-            <span>{country?.flag}</span>
-            <span>{profile.cityName}, {country?.name}</span>
-          </p>
-
-          {/* Meaningful Connection Metric Badge */}
-          <div className="flex items-center gap-1.5 mt-2">
-            <span className="text-[10px] font-semibold bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full border border-rose-200 flex items-center gap-1">
-              <Sparkles className="w-3 h-3 text-rose-500" />
-              <span>Taxa de Conexão (MCR): {mcrMetrics.mcrScorePercent}%</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Anonymous Account Link Prompt Banner */}
-      {isAnonymous && !linkedSuccess && (
-        <div className="bg-gradient-to-r from-rose-50 to-amber-50 border border-rose-200/80 rounded-2xl p-4 shadow-2xs">
-          <div className="flex items-start gap-2.5">
-            <Shield className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <h3 className="font-bold text-stone-900">Salvar seu perfil com E-mail</h3>
-              <p className="text-stone-600 mt-0.5 leading-relaxed">
-                Vincule seu e-mail para não perder seus matches e mensagens.
-              </p>
-              <form onSubmit={handleLinkSubmit} className="mt-2.5 flex gap-2">
-                <input
-                  type="email"
-                  placeholder="seu.email@exemplo.com"
-                  value={emailInput}
-                  onChange={e => setEmailInput(e.target.value)}
-                  className="flex-1 px-3 py-1.5 text-xs bg-white border border-stone-200 rounded-lg focus:outline-rose-500"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={linking}
-                  className="px-3 py-1.5 bg-rose-600 text-white rounded-lg text-xs font-bold hover:bg-rose-700 transition"
-                >
-                  {linking ? 'Salvando...' : 'Salvar'}
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Navigation Tabs */}
-      <div className="flex bg-stone-100 p-1 rounded-xl text-xs font-semibold text-stone-600">
-        <button
-          type="button"
-          onClick={() => setActiveTab('profile')}
-          className={`flex-1 py-2 rounded-lg transition text-center ${
-            activeTab === 'profile' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
-          }`}
-        >
-          Perfil
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('memory')}
-          className={`flex-1 py-2 rounded-lg transition text-center flex items-center justify-center gap-1 ${
-            activeTab === 'memory' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
-          }`}
-        >
-          <Brain className="w-3 h-3 text-rose-500" />
-          <span>Memória</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('preferences')}
-          className={`flex-1 py-2 rounded-lg transition text-center ${
-            activeTab === 'preferences' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
-          }`}
-        >
-          Preferências
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('safety')}
-          className={`flex-1 py-2 rounded-lg transition text-center ${
-            activeTab === 'safety' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
-          }`}
-        >
-          Confiança
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('dataSaver')}
-          className={`flex-1 py-2 rounded-lg transition text-center ${
-            activeTab === 'dataSaver' ? 'bg-white text-rose-600 shadow-2xs font-bold' : 'hover:text-stone-900'
-          }`}
-        >
-          Economia
-        </button>
-      </div>
-
-      {/* TAB 1: PERFIL */}
-      {activeTab === 'profile' && (
-        <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          <div>
-            <label className="text-xs font-bold text-stone-900 block mb-1">Biografia & Apresentação</label>
-            <textarea
-              rows={3}
-              value={editingBio}
-              onChange={e => setEditingBio(e.target.value)}
-              onBlur={() => onUpdateProfile({ bio: editingBio })}
-              placeholder="Fale sobre seus gostos, sua cultura e o que busca..."
-              className="w-full p-2.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-rose-500"
+    <div className="flex-1 max-w-md mx-auto w-full min-h-screen bg-stone-950 text-white p-3.5 pb-28 space-y-3.5 select-none overflow-y-auto">
+      
+      {/* ─────────────────────────────────────────────────────────────
+          CABEÇALHO COMPACTO & ELEGANTE (ESTILO LUXO MOBILE)
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-stone-900/90 backdrop-blur-md rounded-3xl p-4 border border-stone-800 shadow-xl flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-rose-500/80 shrink-0 bg-stone-800 shadow-inner">
+            <OptimizedImage
+              src={profile.profilePhoto}
+              alt={profile.displayName}
+              variant="avatar"
+              className="w-full h-full object-cover"
             />
-          </div>
-
-          <div>
-            <label className="text-xs font-bold text-stone-900 block mb-1">Intenção de Conexão</label>
-            <select
-              value={profile.intent}
-              onChange={e => onUpdateProfile({ intent: e.target.value as RelationshipIntent })}
-              className="w-full p-2.5 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-rose-500"
+            <label
+              htmlFor="main-photo-upload"
+              className="absolute inset-0 bg-black/40 hover:bg-black/60 flex items-center justify-center cursor-pointer text-white transition"
+              title="Trocar Foto"
             >
-              {Object.entries(RELATIONSHIP_INTENTS_CONFIG).map(([k, cfg]) => (
-                <option key={k} value={k}>{cfg.label} ({cfg.description})</option>
-              ))}
-            </select>
+              <Camera className="w-4 h-4" />
+            </label>
+            <input
+              id="main-photo-upload"
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
           </div>
 
-          <div>
-            <label className="text-xs font-bold text-stone-900 block mb-1.5">Interesses & Afinidades</label>
-            <div className="flex flex-wrap gap-1.5">
-              {NORMALIZED_INTERESTS.map(interest => {
-                const isSelected = profile.interests.includes(interest);
-                return (
-                  <button
-                    key={interest}
-                    type="button"
-                    onClick={() => {
-                      const updated = isSelected
-                        ? profile.interests.filter(i => i !== interest)
-                        : [...profile.interests, interest];
-                      onUpdateProfile({ interests: updated });
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-bold text-white text-base truncate">{profile.displayName}</h2>
+              <span className="text-stone-400 text-sm font-normal">, {profile.age}</span>
+              {profile.verificationStatus === 'verified' && (
+                <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" title="Verificado" />
+              )}
+            </div>
+            <p className="text-xs text-stone-400 flex items-center gap-1 mt-0.5">
+              <span>{country?.flag}</span>
+              <span className="truncate">{profile.cityName}, {country?.name}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Botão de Verificação Rápida */}
+        <button
+          type="button"
+          onClick={() => setIsVerificationModalOpen(true)}
+          className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer shrink-0 ${
+            profile.verificationStatus === 'verified'
+              ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+              : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-600'
+          }`}
+        >
+          <ShieldCheck className={`w-3.5 h-3.5 ${profile.verificationStatus === 'verified' ? 'text-emerald-400' : 'text-amber-400'}`} />
+          <span>{profile.verificationStatus === 'verified' ? 'Verificado' : 'Verificar'}</span>
+        </button>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          CAMADA 1 — IDENTIDADE (100% RECOLHÍVEL)
+          Foto | Galeria | 🎙️ Voz | ✏️ Editar | 🛡️ Verificação
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg transition-all">
+        {/* Cabeçalho da Camada 1 */}
+        <button
+          type="button"
+          onClick={() => toggleSection('identity')}
+          className="w-full p-4 flex items-center justify-between bg-stone-900 hover:bg-stone-850 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-rose-950/60 border border-rose-800/80 flex items-center justify-center text-rose-400">
+              <Camera className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-white">Camada 1 — Identidade</h3>
+              <p className="text-[11px] text-stone-400">Fotos, áudio de apresentação e biografia</p>
+            </div>
+          </div>
+          <div className="p-1 rounded-lg text-stone-400 bg-stone-800">
+            {openSections.identity ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        </button>
+
+        {/* Conteúdo Expansível Camada 1 */}
+        <AnimatePresence initial={false}>
+          {openSections.identity && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-4 pb-4 space-y-3.5 border-t border-stone-800/60 pt-3"
+            >
+              {/* 📷 Galeria de Fotos */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-stone-300">Galeria de Fotos ({userGallery.length}/6)</label>
+                  <label
+                    htmlFor="gallery-upload"
+                    className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Adicionar</span>
+                  </label>
+                  <input
+                    id="gallery-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        const comp = await compressImage(file, 600, 0.7);
+                        onUpdateProfile({ photos: [...(profile.photos || []), comp] });
+                      }
                     }}
-                    className={`text-xs px-2.5 py-1 rounded-full border transition ${
-                      isSelected
-                        ? 'bg-rose-50 border-rose-400 text-rose-700 font-bold'
-                        : 'bg-stone-50 border-stone-200 text-stone-600 hover:bg-stone-100'
-                    }`}
-                  >
-                    {interest}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 2: PREFERÊNCIAS */}
-      {activeTab === 'preferences' && (
-        <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <h4 className="text-xs font-bold text-stone-900">Conexão Intercultural Lusófona</h4>
-              <p className="text-[11px] text-stone-700">Descobrir pessoas em todos os 9 países da CPLP</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={preferences.crossCultural}
-              onChange={e => onUpdatePreferences({ crossCultural: e.target.checked })}
-              className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
-            />
-          </div>
-
-          <div>
-            <h4 className="text-xs font-bold text-stone-900 mb-2">Faixa Etária Desejada</h4>
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-stone-700">{preferences.minAge} anos</span>
-              <input
-                type="range"
-                min="18"
-                max="65"
-                value={preferences.maxAge}
-                onChange={e => onUpdatePreferences({ maxAge: Number(e.target.value) })}
-                className="flex-1 accent-rose-600"
-              />
-              <span className="text-xs font-bold text-stone-900">{preferences.maxAge} anos</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: CONFIANÇA & SEGURANÇA (PONTO 3: TRUST GRAPH) */}
-      {activeTab === 'safety' && (
-        <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          {/* Trust Badges Banner */}
-          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                <span>Seus Distintivos de Confiança ÉNós</span>
-              </span>
-              <span className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
-                Privado & Não-Punitivo
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {(myTrustEvaluation.eligibleBadges || []).map((b, idx) => (
-                <div key={idx} className="p-2 bg-white rounded-lg border border-stone-200/80 shadow-2xs flex items-start gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <span className="text-[11px] font-bold text-stone-900 block">{b.label}</span>
-                    <span className="text-[10px] text-stone-600 leading-tight block">{b.description}</span>
-                  </div>
+                    className="hidden"
+                  />
                 </div>
-              ))}
-            </div>
-          </div>
 
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <h4 className="text-xs font-bold text-stone-900">Mostrar Minha Idade</h4>
-              <p className="text-[11px] text-stone-700">Exibir idade no perfil público</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={privacy.showAge}
-              onChange={e => onUpdatePrivacy({ showAge: e.target.checked })}
-              className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <h4 className="text-xs font-bold text-stone-900">Localização Aproximada</h4>
-              <p className="text-[11px] text-stone-700">Compartilhar apenas região/cidade aproximada</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={privacy.shareApproximateLocationOnly}
-              onChange={e => onUpdatePrivacy({ shareApproximateLocationOnly: e.target.checked })}
-              className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <h4 className="text-xs font-bold text-stone-900">Status Online</h4>
-              <p className="text-[11px] text-stone-700">Exibir quando você estiver ativo</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={privacy.showOnlineStatus}
-              onChange={e => onUpdatePrivacy({ showOnlineStatus: e.target.checked })}
-              className="w-5 h-5 accent-rose-600 cursor-pointer rounded"
-            />
-          </div>
-
-          {onOpenGmail && (
-            <div className="pt-2">
-              <button
-                type="button"
-                id="btn-open-gmail-profile"
-                onClick={onOpenGmail}
-                className="w-full py-2.5 px-4 bg-white hover:bg-stone-50 border border-stone-300 text-stone-800 font-medium text-xs rounded-xl flex items-center justify-between transition cursor-pointer active:scale-98 shadow-2xs"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-red-50 text-red-600 flex items-center justify-center">
-                    <Mail className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-left">
-                    <span className="font-semibold block">Google Workspace · Gmail</span>
-                    <span className="text-[10px] text-stone-500">
-                      {isGmailConnected() ? 'Conectado à sua conta Google' : 'Conectar para ler e enviar e-mails'}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-[11px] font-semibold text-rose-600">
-                  {isGmailConnected() ? 'Abrir' : 'Conectar'}
-                </span>
-              </button>
-            </div>
-          )}
-
-          {onOpenKeypad && (
-            <div className="pt-1">
-              <button
-                type="button"
-                id="btn-open-admin-keypad-profile"
-                onClick={onOpenKeypad}
-                className="w-full py-2.5 px-4 bg-stone-900 hover:bg-stone-800 text-stone-100 font-medium text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer active:scale-98 shadow-sm"
-              >
-                <Shield className="w-4 h-4 text-rose-500" />
-                <span>Acesso Administrativo (Teclado PIN)</span>
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* TAB 4: MODO ECONOMIA DE DADOS & RESILIÊNCIA CPLP (PONTO 4) */}
-      {activeTab === 'dataSaver' && (
-        <div className="space-y-4 bg-white p-4 rounded-2xl border border-stone-200 shadow-2xs">
-          {/* Header Banner - Architectural Philosophy */}
-          <div className="p-3.5 bg-gradient-to-r from-amber-50 via-rose-50 to-orange-50 rounded-xl border border-amber-200/80 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-950 font-serif">
-                <Wifi className="w-4 h-4 text-amber-600" />
-                <span>Economia de Dados & Conexão Lusófona</span>
-              </div>
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                dataSaver.isOnline() ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
-              }`}>
-                {dataSaver.isOnline() ? <CheckCircle2 className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-                <span>{dataSaver.isOnline() ? 'Conectado' : 'Offline'}</span>
-              </span>
-            </div>
-            <p className="text-[11px] text-stone-700 leading-relaxed font-sans">
-              "A experiência principal deve continuar excelente mesmo quando a internet não é excelente." Otimizado com arquitetura adaptativa para Angola, Cabo Verde, Guiné-Bissau, Moçambique, Portugal, São Tomé e Timor-Leste.
-            </p>
-          </div>
-
-          {/* 1. Network Awareness & Adaptation Status Card */}
-          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200/90 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-                <Radio className="w-3.5 h-3.5 text-rose-600" />
-                <span>Sensibilidade e Estado da Rede</span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-rose-50 text-rose-800 rounded-md border border-rose-200">
-                {networkCondition.category}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
-              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
-                <span className="text-stone-400 block text-[9px]">Tipo Efetivo</span>
-                <span className="font-bold text-stone-900 uppercase">{networkCondition.effectiveType || '3G'}</span>
-              </div>
-              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
-                <span className="text-stone-400 block text-[9px]">Latência (RTT)</span>
-                <span className="font-bold text-stone-900">{networkCondition.rttMs ? `${networkCondition.rttMs} ms` : '~300 ms'}</span>
-              </div>
-              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
-                <span className="text-stone-400 block text-[9px]">Meta Ecrã Inicial</span>
-                <span className="font-bold text-emerald-700 font-mono">&lt; 150 KB</span>
-              </div>
-              <div className="p-2 bg-white rounded-lg border border-stone-200 text-stone-700">
-                <span className="text-stone-400 block text-[9px]">Autoplay Mídia</span>
-                <span className={`font-bold ${dataSaver.isAutoplayAllowed() ? 'text-amber-700' : 'text-rose-700'}`}>
-                  {dataSaver.isAutoplayAllowed() ? 'Permitido' : 'Bloqueado'}
-                </span>
-              </div>
-            </div>
-
-            {/* Auto-Adaptive Switch */}
-            <div className="flex items-center justify-between pt-1 border-t border-stone-200/70">
-              <div>
-                <h5 className="text-xs font-bold text-stone-900">Adaptação Automática à Rede</h5>
-                <p className="text-[10px] text-stone-600">O sistema deteta a condição da rede (2G/3G/4G) e ajusta imagens e áudio sem intervenção</p>
-              </div>
-              <input
-                type="checkbox"
-                id="toggle-auto-adaptive"
-                checked={dataSaverSettings.mode === 'auto_adaptive'}
-                onChange={e => {
-                  const updated = dataSaver.updateSettings({
-                    mode: e.target.checked ? 'auto_adaptive' : 'manual'
-                  });
-                  setDataSaverSettings(updated);
-                }}
-                className="w-4 h-4 accent-rose-600 cursor-pointer rounded shrink-0 ml-2"
-              />
-            </div>
-          </div>
-
-          {/* 2. Bandwidth & Telemetry Dashboard */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="p-3 bg-emerald-50/70 border border-emerald-200 rounded-xl">
-              <div className="flex items-center justify-between text-emerald-800 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Dados Poupados</span>
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              </div>
-              <div className="text-base font-black text-emerald-950 font-mono">
-                {formatBytes(telemetry.totalBytesSaved)}
-              </div>
-              <p className="text-[10px] text-emerald-700 mt-0.5 font-medium">
-                {savedPercent}% de redução de tráfego
-              </p>
-            </div>
-
-            <div className="p-3 bg-stone-50 border border-stone-200 rounded-xl">
-              <div className="flex items-center justify-between text-stone-600 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Tráfego Usado</span>
-                <Download className="w-3.5 h-3.5 text-stone-500" />
-              </div>
-              <div className="text-base font-black text-stone-900 font-mono">
-                {formatBytes(telemetry.totalBytesDownloaded)}
-              </div>
-              <p className="text-[10px] text-stone-700 mt-0.5">
-                {telemetry.networkRequestsCount} reqs · {telemetry.cacheHitsCount} no cache
-              </p>
-            </div>
-          </div>
-
-          {/* 3. Image Pipeline & Progressive Loading */}
-          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-xs font-bold text-stone-900">Pipeline de Imagens AVIF/WebP</h4>
-                <p className="text-[10px] text-stone-600">Carregamento progressivo de perfis com formato moderno e dimensões responsivas</p>
-              </div>
-              <span className="text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-200">
-                AVIF + WebP
-              </span>
-            </div>
-
-            <div className="space-y-2 pt-1">
-              <label className="text-xs font-bold text-stone-900 block">
-                Nível de Compressão (Qualidade Efetiva: {dataSaver.getEffectiveQuality()})
-              </label>
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                {(
-                  [
-                    { id: 'ultra_low', label: 'Ultra Econômico', weight: '~15-28 KB' },
-                    { id: 'balanced', label: 'Equilibrado', weight: '~45-68 KB' },
-                    { id: 'high', label: 'Qualidade', weight: '~180-350 KB' }
-                  ] as const
-                ).map(lvl => (
-                  <button
-                    key={lvl.id}
-                    type="button"
-                    onClick={() => handleChangeQualityLevel(lvl.id)}
-                    className={`p-2 rounded-xl border text-center transition flex flex-col items-center justify-center cursor-pointer ${
-                      dataSaverSettings.qualityLevel === lvl.id
-                        ? 'bg-rose-50 border-rose-500 text-rose-900 shadow-2xs font-bold'
-                        : 'bg-white border-stone-200 text-stone-700 hover:bg-stone-100'
-                    }`}
-                  >
-                    <span className="text-[11px]">{lvl.label}</span>
-                    <span className="text-[9px] text-stone-500 mt-0.5 font-mono">{lvl.weight}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* 4. Persistent Offline Queue Manager & Idempotent Sync */}
-          <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-xs text-stone-900 flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-rose-600" />
-                <span>Fila Offline & Sincronização Idempotente</span>
-              </span>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 bg-stone-200 text-stone-800 rounded-full">
-                {offlineQueue.length} {offlineQueue.length === 1 ? 'evento pendente' : 'eventos pendentes'}
-              </span>
-            </div>
-
-            <p className="text-[11px] text-stone-600 leading-relaxed">
-              Suas ações são salvas com chaves de idempotência únicas localmente. Em caso de reconexão intermitente, retentativas nunca duplicam escritas no Firestore.
-            </p>
-
-            {offlineQueue.length > 0 && (
-              <div className="space-y-1.5 pt-1">
-                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                  {offlineQueue.map((item) => (
-                    <div key={item.id} className="text-[10px] bg-white p-2 rounded-lg border border-stone-200 flex items-center justify-between font-mono text-stone-700">
-                      <span className="font-semibold text-rose-700 uppercase">[{item.type}]</span>
-                      <span>{new Date(item.enqueuedAt).toLocaleTimeString()}</span>
-                      <span className="text-stone-400">idemp: {item.idempotencyKey ? item.idempotencyKey.substring(0, 14) + '...' : 'auto'}</span>
+                <div className="grid grid-cols-3 gap-2">
+                  {userGallery.map((photoUrl, idx) => (
+                    <div key={idx} className="relative aspect-4/5 rounded-2xl overflow-hidden bg-stone-800 border border-stone-700/80 group">
+                      <OptimizedImage
+                        src={photoUrl}
+                        alt={`Foto ${idx + 1}`}
+                        variant="card"
+                        className="w-full h-full object-cover"
+                      />
+                      {idx === 0 && (
+                        <span className="absolute top-1.5 left-1.5 bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-md shadow-xs">
+                          Principal
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
+              </div>
 
+              {/* 🎙️ Voz de Apresentação */}
+              <div className="p-3 bg-stone-950/60 rounded-2xl border border-stone-800 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                    <Mic className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Áudio de Apresentação</h4>
+                    <p className="text-[11px] text-stone-400 font-mono">0:15 • Tom natural e sotaque</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsPlayingVoice(!isPlayingVoice)}
+                    className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                      isPlayingVoice
+                        ? 'bg-amber-500/20 border-amber-500 text-amber-300'
+                        : 'bg-stone-800 border-stone-700 text-stone-200 hover:border-stone-600'
+                    }`}
+                  >
+                    {isPlayingVoice ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                    <span>{isPlayingVoice ? 'A Pausar' : 'Ouvir'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsRecordingVoice(true);
+                      setTimeout(() => {
+                        setIsRecordingVoice(false);
+                        alert('Novo áudio de voz gravado e sincronizado com sucesso!');
+                      }, 2000);
+                    }}
+                    className="p-2 bg-stone-800 hover:bg-stone-700 border border-stone-700 rounded-xl text-stone-300 transition cursor-pointer"
+                    title="Gravar Novo Áudio"
+                  >
+                    <Mic className={`w-3.5 h-3.5 ${isRecordingVoice ? 'text-rose-500 animate-pulse' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* ✏️ Biografia & Apresentação */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-stone-300">Biografia</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isEditingBio) handleSaveBio();
+                      else setIsEditingBio(true);
+                    }}
+                    className="text-[11px] font-bold text-rose-400 hover:text-rose-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    <span>{isEditingBio ? 'Salvar' : 'Editar'}</span>
+                  </button>
+                </div>
+
+                {isEditingBio ? (
+                  <textarea
+                    rows={3}
+                    value={bioText}
+                    onChange={e => setBioText(e.target.value)}
+                    placeholder="Conte sobre seus valores, estilo de vida e o que torna a sua história única..."
+                    className="w-full p-2.5 text-xs bg-stone-950 border border-stone-700 rounded-xl text-white focus:outline-rose-500"
+                  />
+                ) : (
+                  <p className="text-xs text-stone-300 bg-stone-950/60 p-2.5 rounded-xl border border-stone-800/80 italic font-serif leading-relaxed">
+                    "{profile.bio || 'Interessado(a) em conversas com profundidade, cultura lusófona e conexões genuínas.'}"
+                  </p>
+                )}
+              </div>
+
+              {/* 🛡️ Verificação de Identidade */}
+              <div className="p-3 bg-emerald-950/30 rounded-2xl border border-emerald-900/50 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="text-xs">
+                    <span className="font-bold text-emerald-200 block">Selo de Autenticidade</span>
+                    <span className="text-[10px] text-emerald-400/80">Foto + Biometria auditada</span>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={handleManualSync}
-                  disabled={isFlushing || !dataSaver.isOnline()}
-                  className="w-full py-2 bg-stone-900 hover:bg-stone-800 disabled:bg-stone-300 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                  onClick={() => setIsVerificationModalOpen(true)}
+                  className="py-1 px-2.5 bg-emerald-800/60 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold transition cursor-pointer"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isFlushing ? 'animate-spin' : ''}`} />
-                  <span>{isFlushing ? 'Sincronizando com Firestore...' : 'Sincronizar Fila Agora'}</span>
+                  Gerir Selo
                 </button>
               </div>
-            )}
-          </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
-          {/* 5. Network Simulator Sandbox (Technical Validation) */}
-          <div className="p-3.5 bg-stone-900 text-stone-100 rounded-xl space-y-2.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold flex items-center gap-1.5 text-stone-100">
-                <Radio className="w-3.5 h-3.5 text-rose-400" />
-                <span>Simulador de Rede CPLP (Validação Técnica)</span>
-              </span>
-              <span className="text-[9px] font-mono bg-stone-800 text-rose-300 px-1.5 py-0.5 rounded border border-stone-700">
-                DEV/TEST
-              </span>
+      {/* ─────────────────────────────────────────────────────────────
+          CAMADA 2 — PREFERÊNCIAS (100% RECOLHÍVEL)
+          ❤️ O que procuro | 👥 Quem procuro | 📍 Onde procuro | ⚙️ Preferências
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg transition-all">
+        <button
+          type="button"
+          onClick={() => toggleSection('preferences')}
+          className="w-full p-4 flex items-center justify-between bg-stone-900 hover:bg-stone-850 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-rose-950/60 border border-rose-800/80 flex items-center justify-center text-rose-400">
+              <Sliders className="w-3.5 h-3.5" />
             </div>
-
-            <p className="text-[10px] text-stone-300 leading-snug">
-              Teste o comportamento da aplicação em diferentes cenários de infraestrutura móvel:
-            </p>
-
-            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-              {(
-                [
-                  { id: 'real', label: 'Rede Real (Dispositivo)' },
-                  { id: 'wifi_4g', label: 'WiFi / 4G Rápido' },
-                  { id: '3g_balanced', label: '3G Médio (Luanda/Mindelo)' },
-                  { id: '2g_edge', label: '2G Edge (< 150KB Target)' },
-                  { id: 'offline_simulated', label: 'Offline Simulado' }
-                ] as const
-              ).map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => handleChangeNetworkMode(mode.id)}
-                  className={`p-2 rounded-lg border text-left font-medium transition cursor-pointer ${
-                    networkMode === mode.id
-                      ? 'bg-rose-600 border-rose-500 text-white font-bold'
-                      : 'bg-stone-800 border-stone-700 text-stone-300 hover:bg-stone-700'
-                  }`}
-                >
-                  {mode.label}
-                </button>
-              ))}
-            </div>
-
-            {networkMode === 'offline_simulated' && (
-              <div className="p-2 bg-rose-950/80 border border-rose-800/80 rounded-lg text-[10px] text-rose-200 flex items-center gap-1.5">
-                <WifiOff className="w-3.5 h-3.5 text-rose-400 shrink-0" />
-                <span>Modo Offline simulado ativo. Todas as ações entrarão na fila persistente local com chave de idempotência.</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB 5: MEMÓRIA RELACIONAL (Pessoa + Contexto + Comportamento + Reciprocidade + Resultado) */}
-      {activeTab === 'memory' && (
-        <div className="space-y-4">
-          {/* Header & Paradigm Shift Statement */}
-          <div className="bg-gradient-to-br from-stone-900 via-stone-850 to-stone-900 text-white p-5 rounded-2xl border border-stone-800 shadow-2xs space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400 flex items-center gap-1">
-                <Brain className="w-3.5 h-3.5" />
-                <span>Memória de Condições Relacionais</span>
-              </span>
-              <span className="text-[10px] font-mono bg-white/10 text-stone-200 px-2 py-0.5 rounded-full border border-white/20">
-                {userMemory.totalConditionsAnalyzed} interações calibradas
-              </span>
-            </div>
-
-            <h3 className="text-base font-serif font-bold text-stone-100 leading-snug">
-              Que condições produzem uma conexão significativa para ti?
-            </h3>
-
-            <p className="text-xs text-stone-300 leading-relaxed font-sans">
-              O ÉNós não reduz pessoas a listas de interesses estáticos. Construímos memória contínua sobre a dinâmica viva do encontro:
-            </p>
-
-            {/* 5-part Value Tuple Diagram */}
-            <div className="grid grid-cols-5 gap-1 pt-1 text-center font-mono">
-              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                <span className="text-[9px] text-rose-300 block font-sans font-bold">1. Pessoa</span>
-                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Ritmo</span>
-              </div>
-              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                <span className="text-[9px] text-purple-300 block font-sans font-bold">2. Contexto</span>
-                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Origem</span>
-              </div>
-              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                <span className="text-[9px] text-amber-300 block font-sans font-bold">3. Abertura</span>
-                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Tempo</span>
-              </div>
-              <div className="bg-white/10 p-2 rounded-lg border border-white/10">
-                <span className="text-[9px] text-emerald-300 block font-sans font-bold">4. Troca</span>
-                <span className="text-[10px] text-stone-200 truncate block mt-0.5">Turnos</span>
-              </div>
-              <div className="bg-rose-500/20 p-2 rounded-lg border border-rose-500/40">
-                <span className="text-[9px] text-rose-300 block font-sans font-bold">5. Vínculo</span>
-                <span className="text-[10px] text-rose-200 font-bold truncate block mt-0.5">MCR</span>
-              </div>
+            <div>
+              <h3 className="font-bold text-sm text-white">Camada 2 — Preferências</h3>
+              <p className="text-[11px] text-stone-400">Critérios de busca, intenção e alcance</p>
             </div>
           </div>
+          <div className="p-1 rounded-lg text-stone-400 bg-stone-800">
+            {openSections.preferences ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        </button>
 
-          {/* Synthesized Personal Insight */}
-          <div className="p-4 bg-white rounded-2xl border border-stone-200 shadow-2xs space-y-3">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-rose-600 shrink-0" />
-              <h4 className="text-xs font-bold text-stone-900 uppercase tracking-wide">
-                Diagnóstico de Fertilidade Relacional
-              </h4>
-            </div>
-
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-800 leading-relaxed font-sans">
-              "{userMemory.fertileConditions.synthesizedInsight}"
-            </div>
-
-            {/* Core Fertile Drivers */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-              <div className="p-3 bg-rose-50/60 rounded-xl border border-rose-100 space-y-1">
-                <span className="text-[11px] font-bold text-rose-900 flex items-center gap-1.5">
-                  <HeartHandshake className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Ritmo Comunicativo Mais Ressonante</span>
-                </span>
-                <p className="text-xs text-rose-800 font-medium">
-                  {userMemory.fertileConditions.topResonantStyles.map(s => 
-                    s === 'reflective' ? 'Reflexivo (Profundidade & Pausa)' :
-                    s === 'warm' ? 'Acolhedor (Empatia & Cuidado)' :
-                    s === 'expressive' ? 'Expressivo (Vitalidade & Arte)' : 'Direto'
-                  ).join(' e ')}
-                </p>
-                <span className="text-[10px] text-rose-700/80 block">
-                  Preferência por profundidade: {userMemory.fertileConditions.optimalDepthPreference === 'deep' ? 'Diálogos Profundos' : 'Moderação inicial'}
-                </span>
+        <AnimatePresence initial={false}>
+          {openSections.preferences && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-4 pb-4 space-y-4 border-t border-stone-800/60 pt-3"
+            >
+              {/* ❤️ O que procuro (Intenção) */}
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1">
+                  <Heart className="w-3.5 h-3.5 text-rose-500 fill-current" />
+                  <span>O que procuro (Intenção)</span>
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {Object.entries(RELATIONSHIP_INTENTS_CONFIG).map(([key, cfg]) => {
+                    const isSelected = profile.intent === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => onUpdateProfile({ intent: key as RelationshipIntent })}
+                        className={`p-2 rounded-xl text-xs font-bold text-left border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-rose-600 border-rose-500 text-white'
+                            : 'bg-stone-950 border-stone-800 text-stone-300 hover:border-stone-700'
+                        }`}
+                      >
+                        <span className="block truncate">{cfg.label}</span>
+                        <span className="text-[10px] opacity-75 font-normal block truncate">{cfg.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="p-3 bg-purple-50/60 rounded-xl border border-purple-100 space-y-1">
-                <span className="text-[11px] font-bold text-purple-900 flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Contextos de Descoberta com Maior MCR</span>
-                </span>
-                <p className="text-xs text-purple-800 font-medium">
-                  {userMemory.fertileConditions.thrivingContexts.topOrigins.map(o =>
-                    o === 'SERENDIPITY' ? '✦ Descoberta Inesperada' :
-                    o === 'CULTURAL_BRIDGE' ? 'Ponte Cultural Lusófona' :
-                    o === 'VALUES_AFFINITY' ? 'Sintonia de Valores' : o
-                  ).join(', ')}
-                </p>
-                <span className="text-[10px] text-purple-700/80 block">
-                  Taxa de sucesso transnacional CPLP: {Math.round(userMemory.fertileConditions.thrivingContexts.crossBorderSuccessRate * 100)}%
-                </span>
+              {/* 👥 Quem procuro (Gênero & Faixa Etária) */}
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1">
+                  <Users className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Quem procuro (Gênero & Idade)</span>
+                </label>
+
+                {/* Seletor de Gênero Desejado */}
+                <div className="flex gap-1.5 mb-2.5">
+                  {[
+                    { id: 'woman', label: 'Mulheres' },
+                    { id: 'man', label: 'Homens' },
+                    { id: 'non_binary', label: 'Todos' }
+                  ].map(g => {
+                    const isSelected = (preferences.genders || []).includes(g.id as any);
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          const current = preferences.genders || [];
+                          const updated = isSelected
+                            ? current.filter(x => x !== g.id)
+                            : [...current, g.id as any];
+                          onUpdatePreferences({ genders: updated.length > 0 ? updated : ['woman', 'man'] });
+                        }}
+                        className={`flex-1 py-1.5 px-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-stone-100 text-stone-950 border-white'
+                            : 'bg-stone-950 border-stone-800 text-stone-400'
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Idade Slider */}
+                <div className="bg-stone-950/60 p-2.5 rounded-2xl border border-stone-800 space-y-1.5">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-stone-400">Faixa Etária:</span>
+                    <span className="font-bold text-white">{preferences.minAge} — {preferences.maxAge} anos</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="18"
+                    max="70"
+                    value={preferences.maxAge}
+                    onChange={e => onUpdatePreferences({ maxAge: Number(e.target.value) })}
+                    className="w-full accent-rose-500 cursor-pointer"
+                  />
+                </div>
               </div>
+
+              {/* 📍 Onde procuro (Raio & Comunidade CPLP) */}
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Onde procuro (Distância & Países)</span>
+                </label>
+
+                {/* Distância Máxima */}
+                <div className="bg-stone-950/60 p-2.5 rounded-2xl border border-stone-800 space-y-1.5 mb-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-stone-400">Raio de Proximidade:</span>
+                    <span className="font-bold text-emerald-400">
+                      {preferences.distanceKm && preferences.distanceKm > 0 ? `${preferences.distanceKm} km` : 'Toda a Lusofonia 🌍'}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 overflow-x-auto no-scrollbar py-1">
+                    {[10, 25, 50, 100, 0].map(dist => (
+                      <button
+                        key={dist}
+                        type="button"
+                        onClick={() => onUpdatePreferences({ distanceKm: dist })}
+                        className={`py-1 px-2.5 rounded-lg text-xs font-bold shrink-0 border transition cursor-pointer ${
+                          preferences.distanceKm === dist
+                            ? 'bg-emerald-600 border-emerald-500 text-white'
+                            : 'bg-stone-900 border-stone-800 text-stone-400'
+                        }`}
+                      >
+                        {dist === 0 ? 'Sem Limite' : `${dist} km`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Alternância Lusofonia Global */}
+                <div className="flex items-center justify-between p-2.5 bg-stone-950/60 rounded-2xl border border-stone-800">
+                  <div className="flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-purple-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white">Conexões Interculturais CPLP</h4>
+                      <p className="text-[10px] text-stone-400">Descobrir em Angola, Brasil, Portugal, etc.</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={preferences.crossCultural}
+                    onChange={e => onUpdatePreferences({ crossCultural: e.target.checked })}
+                    className="w-4 h-4 accent-rose-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* ⚙️ Preferências Extras */}
+              <div className="flex items-center justify-between p-2.5 bg-stone-950/60 rounded-2xl border border-stone-800">
+                <div className="flex items-center gap-2">
+                  <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Somente Perfis Verificados</h4>
+                    <p className="text-[10px] text-stone-400">Exibir apenas membros com selo de identidade</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={preferences.verifiedOnly}
+                  onChange={e => onUpdatePreferences({ verifiedOnly: e.target.checked })}
+                  className="w-4 h-4 accent-rose-600 cursor-pointer"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          CAMADA 3 — SEGURANÇA (100% RECOLHÍVEL)
+          🛡️ Identidade | 🔐 Privacidade | 🚫 Bloqueados | ⚠️ Denúncias
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg transition-all">
+        <button
+          type="button"
+          onClick={() => toggleSection('safety')}
+          className="w-full p-4 flex items-center justify-between bg-stone-900 hover:bg-stone-855 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-emerald-950/60 border border-emerald-800/80 flex items-center justify-center text-emerald-400">
+              <Shield className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-white">Camada 3 — Segurança</h3>
+              <p className="text-[11px] text-stone-400">Privacidade, bloqueios, auditoria e denúncias</p>
             </div>
           </div>
+          <div className="p-1 rounded-lg text-stone-400 bg-stone-800">
+            {openSections.safety ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        </button>
 
-          {/* Dynamic Reciprocity & Friction Awareness */}
-          <div className="p-4 bg-white rounded-2xl border border-stone-200 shadow-2xs space-y-3">
-            <h4 className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
-              <TrendingUp className="w-4 h-4 text-emerald-600" />
-              <span>Dinâmica de Reciprocidade & Equilíbrio de Turnos</span>
-            </h4>
-
-            <div className="space-y-2 text-xs">
-              <div className="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl border border-stone-200">
-                <span className="text-stone-700 font-medium">Janela Ótima de Resposta:</span>
-                <span className="font-bold text-stone-900">{userMemory.fertileConditions.reciprocityPace.idealResponseWindow}</span>
-              </div>
-
-              <div className="flex items-center justify-between p-2.5 bg-stone-50 rounded-xl border border-stone-200">
-                <span className="text-stone-700 font-medium">Equilíbrio de Diálogo:</span>
-                <span className="font-bold text-stone-900">
-                  {userMemory.fertileConditions.reciprocityPace.preferredTurnBalance === 'symmetric' ? 'Simétrico (50/50 em trocas de ideias)' : 'Fluido e orgânico'}
-                </span>
-              </div>
-
-              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-1.5">
-                <span className="text-[11px] font-bold text-amber-900 block">
-                  Gatilhos de Fricção Registados (O que desacelera a conexão para ti):
-                </span>
-                <ul className="text-[11px] text-amber-800 space-y-1 list-disc list-inside">
-                  {userMemory.fertileConditions.frictionTriggers.map((trig, idx) => (
-                    <li key={idx}>{trig}</li>
+        <AnimatePresence initial={false}>
+          {openSections.safety && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-4 pb-4 space-y-3.5 border-t border-stone-800/60 pt-3"
+            >
+              {/* 🛡️ Identidade & Grau de Confiança */}
+              <div className="p-3 bg-stone-950/60 rounded-2xl border border-stone-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Identidade & Confiabilidade</span>
+                  </span>
+                  <span className="text-xs font-bold text-emerald-400 font-mono">
+                    {myTrustEvaluation.eligibleBadges.length} Selos Ativos
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {myTrustEvaluation.eligibleBadges.map((b, idx) => (
+                    <span key={idx} className="text-[10px] bg-emerald-950/60 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                      <span>{b.label}</span>
+                    </span>
                   ))}
-                </ul>
+                  {myTrustEvaluation.eligibleBadges.length === 0 && (
+                    <span className="text-[10px] text-stone-400">Verifique a sua identidade para obter selos oficiais.</span>
+                  )}
+                </div>
+                <p className="text-[10px] text-stone-400">
+                  Perfis com verificação biométrica e foto auditada têm 4x mais respostas e prioridade nos filtros.
+                </p>
               </div>
+
+              {/* 🔐 Privacidade */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-stone-300">Controlo de Visibilidade</h4>
+
+                <div className="flex items-center justify-between p-2.5 bg-stone-950/60 rounded-2xl border border-stone-800">
+                  <div className="text-xs">
+                    <span className="font-bold text-white block">Localização Aproximada</span>
+                    <span className="text-[10px] text-stone-400">Exibir apenas cidade/região sem coordenadas exatas</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={privacy.shareApproximateLocationOnly}
+                    onChange={e => onUpdatePrivacy({ shareApproximateLocationOnly: e.target.checked })}
+                    className="w-4 h-4 accent-rose-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 bg-stone-950/60 rounded-2xl border border-stone-800">
+                  <div className="text-xs">
+                    <span className="font-bold text-white block">Status Online</span>
+                    <span className="text-[10px] text-stone-400">Mostrar quando estiver ativo(a) na app</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={privacy.showOnlineStatus}
+                    onChange={e => onUpdatePrivacy({ showOnlineStatus: e.target.checked })}
+                    className="w-4 h-4 accent-rose-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {/* 🚫 Bloqueados */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="text-xs font-bold text-stone-300 flex items-center gap-1">
+                    <UserX className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Perfis Bloqueados ({blockedUsers.length})</span>
+                  </h4>
+                </div>
+
+                {blockedUsers.length === 0 ? (
+                  <p className="text-[11px] text-stone-500 p-2.5 bg-stone-950/40 rounded-xl border border-stone-850 text-center">
+                    Nenhum utilizador bloqueado.
+                  </p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {blockedUsers.map((user, idx) => (
+                      <div key={idx} className="flex items-center justify-between p-2 bg-stone-950/60 rounded-xl border border-stone-800 text-xs">
+                        <span className="text-stone-300 truncate max-w-[200px]">{user}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleUnblockUser(user)}
+                          className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition cursor-pointer"
+                        >
+                          Desbloquear
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ⚠️ Denúncias & Histórico de Moderação */}
+              <div>
+                <h4 className="text-xs font-bold text-stone-300 flex items-center gap-1 mb-1.5">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Histórico de Segurança & Denúncias</span>
+                </h4>
+                <div className="space-y-1.5">
+                  {recentReports.map((rep, idx) => (
+                    <div key={idx} className="p-2 bg-amber-950/20 border border-amber-900/40 rounded-xl text-[11px] text-amber-200">
+                      {rep}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          CAMADA 4 — CONTA (100% RECOLHÍVEL)
+          🔔 Notificações | 📶 Dados | 🌙 Aparência | 🌍 Idioma | ⚙️ Conta
+          ───────────────────────────────────────────────────────────── */}
+      <div className="bg-stone-900 border border-stone-800 rounded-3xl overflow-hidden shadow-lg transition-all">
+        <button
+          type="button"
+          onClick={() => toggleSection('account')}
+          className="w-full p-4 flex items-center justify-between bg-stone-900 hover:bg-stone-850 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-sky-950/60 border border-sky-800/80 flex items-center justify-center text-sky-400">
+              <KeyRound className="w-3.5 h-3.5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm text-white">Camada 4 — Conta & Sistema</h3>
+              <p className="text-[11px] text-stone-400">Notificações, dados, tema, idioma e sessões</p>
             </div>
           </div>
-        </div>
-      )}
+          <div className="p-1 rounded-lg text-stone-400 bg-stone-800">
+            {openSections.account ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          </div>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {openSections.account && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="px-4 pb-4 space-y-4 border-t border-stone-800/60 pt-3"
+            >
+              {/* 🔔 Notificações */}
+              <div className="flex items-center justify-between p-2.5 bg-stone-950/60 rounded-2xl border border-stone-800">
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4 text-sky-400 shrink-0" />
+                  <div>
+                    <h4 className="text-xs font-bold text-white">Notificações Push</h4>
+                    <p className="text-[10px] text-stone-400">Alertas de novas ligações e mensagens</p>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={notificationsEnabled}
+                  onChange={e => setNotificationsEnabled(e.target.checked)}
+                  className="w-4 h-4 accent-rose-600 cursor-pointer"
+                />
+              </div>
+
+              {/* 📶 Dados & Conectividade Inteligente */}
+              <div className="p-3 bg-stone-950/60 rounded-2xl border border-stone-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wifi className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <div>
+                      <h4 className="text-xs font-bold text-white">Economia Extrema de Dados</h4>
+                      <p className="text-[10px] text-stone-400">Otimizado para redes 2G/3G e pacotes móveis</p>
+                    </div>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={dataSaverSettings.enabled}
+                    onChange={e => handleToggleDataSaver(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                  />
+                </div>
+                <div className="text-[10px] text-stone-400 bg-stone-900 p-2 rounded-xl border border-stone-800 flex justify-between font-mono">
+                  <span>Tráfego Poupado:</span>
+                  <span className="text-emerald-400 font-bold">{(telemetry.totalBytesSaved / (1024 * 1024)).toFixed(2)} MB</span>
+                </div>
+              </div>
+
+              {/* 🌙 Aparência */}
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1">
+                  <Moon className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Aparência</span>
+                </label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { id: 'dark', label: 'Escuro', icon: Moon },
+                    { id: 'light', label: 'Claro', icon: Sun },
+                    { id: 'system', label: 'Automático', icon: Layers }
+                  ].map(thm => {
+                    const Icon = thm.icon;
+                    const isSelected = selectedTheme === thm.id;
+                    return (
+                      <button
+                        key={thm.id}
+                        type="button"
+                        onClick={() => setSelectedTheme(thm.id as any)}
+                        className={`py-2 px-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 border transition cursor-pointer ${
+                          isSelected
+                            ? 'bg-stone-100 text-stone-950 border-white'
+                            : 'bg-stone-950 border-stone-800 text-stone-400 hover:text-stone-200'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                        <span>{thm.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 🌍 Idioma & Dialeto Lusófono */}
+              <div>
+                <label className="text-xs font-bold text-stone-300 block mb-1.5 flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Idioma & Expressão</span>
+                </label>
+                <select
+                  value={selectedLanguage}
+                  onChange={e => setSelectedLanguage(e.target.value as any)}
+                  className="w-full p-2.5 text-xs bg-stone-950 border border-stone-700 rounded-xl text-white focus:outline-rose-500 cursor-pointer"
+                >
+                  <option value="pt">Português (Padrão CPLP)</option>
+                  <option value="pt-BR">Português (Brasil)</option>
+                  <option value="pt-AO">Português (Angola)</option>
+                  <option value="pt-MZ">Português (Moçambique)</option>
+                </select>
+              </div>
+
+              {/* ⚙️ Conta & Sessões */}
+              <div className="pt-2 border-t border-stone-800 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAccountSecurityModalOpen(true)}
+                  className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer border border-stone-700"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Gerir Sessões e Credenciais</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (confirm('Deseja realmente terminar a sua sessão?')) {
+                      try {
+                        const { auth, signOut } = await import('../firebase/config');
+                        await signOut(auth);
+                      } catch (e) {
+                        console.info('Logout completed', e);
+                      }
+                      window.location.reload();
+                    }
+                  }}
+                  className="w-full py-2 bg-rose-950/40 hover:bg-rose-950/80 text-rose-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer border border-rose-900/50"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Terminar Sessão</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ─────────────────────────────────────────────────────────────
+          MODAIS ESSENCIAIS
+          ───────────────────────────────────────────────────────────── */}
+      <AccountSecurityModal
+        isOpen={isAccountSecurityModalOpen}
+        onClose={() => setIsAccountSecurityModalOpen(false)}
+        profile={profile}
+        onAccountLinked={(email) => {
+          onLinkAccount(email);
+        }}
+      />
+
+      <IdentityVerificationModal
+        isOpen={isVerificationModalOpen}
+        onClose={() => setIsVerificationModalOpen(false)}
+        profile={profile}
+        onVerificationSuccess={handleVerificationSuccess}
+      />
     </div>
   );
 };

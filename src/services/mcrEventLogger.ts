@@ -21,6 +21,7 @@ import {
   MCRMetrics,
   MCRDiagnosticBottleneck
 } from '../types';
+import { authService } from './authService';
 
 /**
  * 8-Stage Canonical MCR Hierarchy
@@ -328,9 +329,10 @@ export async function logMcrTransition(payload: McrEventPayload): Promise<McrAud
   // Try sending to backend API first for server-side audit enrichment
   if (typeof window !== 'undefined') {
     try {
+      const headers = await authService.getAuthHeaders();
       const res = await fetch('/api/mcr/events', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
       if (res.ok) {

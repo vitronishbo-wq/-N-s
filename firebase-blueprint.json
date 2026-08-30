@@ -20,6 +20,75 @@
       },
       "required": ["id", "displayName", "countryCode", "cityName", "intent"]
     },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Secure private user account and linked authentication credentials",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "isAnonymous": { "type": "boolean" },
+        "linkedProviders": { "type": "array" },
+        "linkedAt": { "type": "number" }
+      },
+      "required": ["uid"]
+    },
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "Private matching preferences and cultural discovery filters",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "minAge": { "type": "number" },
+        "maxAge": { "type": "number" },
+        "genders": { "type": "array" },
+        "countries": { "type": "array" },
+        "relationshipIntents": { "type": "array" },
+        "crossCultural": { "type": "boolean" },
+        "verifiedOnly": { "type": "boolean" },
+        "discoveryEnabled": { "type": "boolean" }
+      },
+      "required": ["uid"]
+    },
+    "PrivacySettings": {
+      "title": "PrivacySettings",
+      "description": "Granular user privacy and visibility controls",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "shareApproximateLocationOnly": { "type": "boolean" },
+        "showAge": { "type": "boolean" },
+        "showOnlineStatus": { "type": "boolean" },
+        "visibility": { "type": "string" }
+      },
+      "required": ["uid"]
+    },
+    "InteractionSignals": {
+      "title": "InteractionSignals",
+      "description": "Private behavioral feedback and telemetry signals",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "seenCandidateUids": { "type": "array" },
+        "likedCandidateUids": { "type": "array" },
+        "passedCandidateUids": { "type": "array" },
+        "totalLikesGiven": { "type": "number" },
+        "totalPassesGiven": { "type": "number" }
+      },
+      "required": ["uid"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Validated 2-party reciprocal connection match",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userA": { "type": "string" },
+        "userB": { "type": "string" },
+        "matchedAt": { "type": "number" }
+      },
+      "required": ["id", "userA", "userB", "matchedAt"]
+    },
     "Conversation": {
       "title": "Conversation",
       "description": "Direct message conversation between connected users",
@@ -39,12 +108,38 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "senderUid": { "type": "string" },
+        "senderId": { "type": "string" },
         "text": { "type": "string" },
-        "timestamp": { "type": "number" },
-        "read": { "type": "boolean" }
+        "createdAt": { "type": "number" },
+        "status": { "type": "string" }
       },
-      "required": ["id", "senderUid", "text", "timestamp"]
+      "required": ["id", "senderId", "text", "createdAt"]
+    },
+    "SafetyBlock": {
+      "title": "SafetyBlock",
+      "description": "User block record to prevent unwanted contact",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "blockedUid": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "blockedUid"]
+    },
+    "SafetyReport": {
+      "title": "SafetyReport",
+      "description": "Triage report submitted by user regarding policy violation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reporterUid": { "type": "string" },
+        "targetUid": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["reporterUid", "targetUid", "reason"]
     },
     "AdminUser": {
       "title": "AdminUser",
@@ -52,12 +147,13 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
+        "displayName": { "type": "string" },
         "role": { "type": "string" },
         "email": { "type": "string" },
-        "active": { "type": "boolean" },
+        "status": { "type": "string" },
         "countryCode": { "type": "string" }
       },
-      "required": ["id", "role"]
+      "required": ["id", "role", "status"]
     },
     "PublicTrustBadges": {
       "title": "PublicTrustBadges",
@@ -104,12 +200,59 @@
         "createdAt": { "type": "number" }
       },
       "required": ["id", "userId", "targetUid", "stage", "countryPair", "audit", "timestamp"]
+    },
+    "UserSession": {
+      "title": "UserSession",
+      "description": "Active client session and device tracking record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "deviceName": { "type": "string" },
+        "browser": { "type": "string" },
+        "os": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "lastActiveAt": { "type": "number" }
+      },
+      "required": ["id", "userId", "deviceName"]
+    },
+    "SecurityEvent": {
+      "title": "SecurityEvent",
+      "description": "Immutable security and authentication audit trail entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "action": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["id", "userId", "action", "timestamp"]
     }
   },
   "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "Private user account and credential linking status"
+    },
     "/profiles/{userId}": {
       "schema": "UserProfile",
       "description": "Public and discovered user profile documents"
+    },
+    "/preferences/{userId}": {
+      "schema": "UserPreferences",
+      "description": "Private discovery preferences and filter parameters"
+    },
+    "/privacy/{userId}": {
+      "schema": "PrivacySettings",
+      "description": "Private user privacy and visibility configuration"
+    },
+    "/signals/{userId}": {
+      "schema": "InteractionSignals",
+      "description": "Private behavioral feedback telemetry"
+    },
+    "/matches/{matchId}": {
+      "schema": "Match",
+      "description": "Confirmed 2-party reciprocal matches"
     },
     "/conversations/{conversationId}": {
       "schema": "Conversation",
@@ -117,11 +260,23 @@
     },
     "/conversations/{conversationId}/messages/{messageId}": {
       "schema": "Message",
-      "description": "Messages inside a conversation"
+      "description": "Messages inside a conversation, accessible only to conversation participants"
+    },
+    "/blocks/{blockId}": {
+      "schema": "SafetyBlock",
+      "description": "Private user block list entries"
+    },
+    "/reports/{reportId}": {
+      "schema": "SafetyReport",
+      "description": "Safety violation reports moderated by admins"
+    },
+    "/discovery_events/{eventId}": {
+      "schema": "McrAuditEvent",
+      "description": "Immutable discovery feed telemetry records"
     },
     "/admins/{adminId}": {
       "schema": "AdminUser",
-      "description": "Administrative access profiles and roles"
+      "description": "Administrative access profiles and roles guarded by founder and super_admin authority"
     },
     "/public_trust_badges/{userId}": {
       "schema": "PublicTrustBadges",
@@ -138,6 +293,14 @@
     "/connection_events/{eventId}": {
       "schema": "McrAuditEvent",
       "description": "Real-time connection funnel telemetry events mirroring MCR transitions"
+    },
+    "/user_sessions/{sessionId}": {
+      "schema": "UserSession",
+      "description": "Device sessions managed per user with remote revocation"
+    },
+    "/security_events/{eventId}": {
+      "schema": "SecurityEvent",
+      "description": "Immutable security action audit log"
     }
   }
 }

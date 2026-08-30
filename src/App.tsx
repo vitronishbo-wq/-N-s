@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, signInAnonymously, onAuthStateChanged, doc, getDoc, setDoc, updateDoc, deleteDoc } from './firebase/config';
 import {
   UserProfile,
@@ -17,12 +18,14 @@ import { DiscoveryAppService } from './services/discoveryService';
 import { connectionGraph } from './services/connectionGraph';
 import { Onboarding } from './components/Onboarding';
 import { Discover } from './components/Discover';
+import { Nearby } from './components/Nearby';
+import { Connections } from './components/Connections';
 import { Conversations } from './components/Conversations';
 import { Profile } from './components/Profile';
 import { AdminKeypadModal } from './components/AdminKeypadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { GmailModal } from './components/GmailModal';
-import { Compass, MessageCircle, User as UserIcon, Shield, Mail } from 'lucide-react';
+import { Compass, MapPin, HeartHandshake, MessageCircle, User as UserIcon, Shield, Mail } from 'lucide-react';
 
 // Helper to get or create a stable persistent device UID
 function getOrCreateDeviceId(): string {
@@ -43,8 +46,8 @@ export default function App() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [loading, setLoading] = useState(true);
 
-  // App Navigation State: 'discover' | 'conversations' | 'profile'
-  const [currentTab, setCurrentTab] = useState<'discover' | 'conversations' | 'profile'>('discover');
+  // App Navigation State (5 Tabs: 'discover' | 'nearby' | 'connections' | 'chat' | 'me')
+  const [currentTab, setCurrentTab] = useState<'discover' | 'nearby' | 'connections' | 'chat' | 'me'>('discover');
 
   // Admin & Keypad State
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
@@ -379,18 +382,26 @@ export default function App() {
   };
 
   // 2.4: Anonymous account linking / recovery without losing identities
-  const handleLinkAccount = (email: string) => {
+  const handleLinkAccount = async (email: string) => {
     setIsAnonymous(false);
     const accountData = {
       uid,
       email,
-      linkedProviders: ['email_recovery'],
+      isAnonymous: false,
+      linkedProviders: ['password'],
       linkedAt: Date.now()
     };
     try {
       localStorage.setItem('enos_linked_account', JSON.stringify(accountData));
     } catch {}
+
+    try {
+      await setDoc(doc(db, 'users', uid), accountData, { merge: true });
+    } catch (e) {
+      console.info('Firestore user account note:', e);
+    }
   };
+
 
   // Dynamic Admin Management Handlers
   const handleAddDynamicAdmin = async (newAdminData: Omit<AdminUser, 'id' | 'createdAt' | 'createdBy'>) => {
@@ -503,23 +514,24 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-100 flex flex-col items-center">
-      {/* App Outer Frame Container */}
-      <div className="w-full max-w-md min-h-screen bg-stone-50 flex flex-col relative shadow-md">
-        {/* Top Minimal Branding Header with Discreet Admin Trigger inside ÉN Logo */}
-        <header className="px-4 py-3 bg-white border-b border-stone-200 flex items-center justify-between sticky top-0 z-20">
+    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col items-center justify-center selection:bg-rose-500/30">
+      {/* App Outer Frame Container - Responsive Mobile Canvas */}
+      <div className="w-full max-w-md h-screen max-h-screen bg-stone-950 flex flex-col relative overflow-hidden shadow-2xl border-x border-stone-850">
+        
+        {/* Top Header - Oculta ruído, mantém branding discreto e estado contextual */}
+        <header className="px-4 py-2.5 bg-stone-950/80 backdrop-blur-xl border-b border-stone-800/80 flex items-center justify-between sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-2">
             <button
               type="button"
               id="btn-admin-keypad-header"
               onClick={() => setIsKeypadOpen(true)}
-              className="w-8 h-8 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center justify-center text-xs shadow-2xs cursor-pointer active:scale-95 transition select-none"
+              className="w-7 h-7 rounded-xl bg-linear-to-br from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-bold flex items-center justify-center text-xs shadow-md shadow-rose-950/50 cursor-pointer active:scale-95 transition-all select-none border border-rose-500/40"
               title="ÉNós"
               aria-label="ÉNós"
             >
               ÉN
             </button>
-            <span className="font-bold text-stone-900 text-sm tracking-tight">ÉNós</span>
+            <span className="font-extrabold text-white text-sm tracking-tight">ÉNós</span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -530,105 +542,164 @@ export default function App() {
                 setGmailComposeProps({});
                 setIsGmailOpen(true);
               }}
-              className="p-1.5 rounded-full text-stone-600 hover:text-red-600 hover:bg-stone-100 transition cursor-pointer"
+              className="p-1.5 rounded-xl text-stone-400 hover:text-stone-200 hover:bg-stone-800/80 transition cursor-pointer"
               title="Google Workspace · Gmail"
               aria-label="Abrir Gmail"
             >
-              <Mail className="w-4 h-4" />
+              <Mail className="w-3.5 h-3.5" />
             </button>
-            <span className="text-xs font-medium text-stone-600">
+            <span className="text-[11px] font-semibold text-stone-400 bg-stone-900 border border-stone-800 px-2 py-0.5 rounded-full">
               {profile?.countryCode ? `CPLP · ${profile.cityName}` : 'CPLP'}
             </span>
           </div>
         </header>
 
-        {/* Main Content Area */}
-        <main className="flex-1 flex flex-col">
-          {currentTab === 'discover' && profile && preferences && privacy && (
-            <Discover
-              myProfile={profile}
-              myPreferences={preferences}
-              privacy={privacy}
-              signals={signals}
-              candidatePool={discoverProfiles}
-              onLike={handleLike}
-              onPass={handlePass}
-              onReport={handleReport}
-              onRecordSeen={handleRecordSeen}
-              onOpenPreferences={() => setCurrentTab('profile')}
-            />
-          )}
+        {/* Main Content Area with Seamless Transition & Touch Scrolling */}
+        <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={currentTab}
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
+              className="flex-1 flex flex-col w-full"
+            >
+              {currentTab === 'discover' && profile && preferences && privacy && (
+                <Discover
+                  myProfile={profile}
+                  myPreferences={preferences}
+                  privacy={privacy}
+                  signals={signals}
+                  candidatePool={discoverProfiles}
+                  onLike={handleLike}
+                  onPass={handlePass}
+                  onReport={handleReport}
+                  onRecordSeen={handleRecordSeen}
+                  onUpdatePreferences={handleUpdatePreferences}
+                />
+              )}
 
-          {currentTab === 'conversations' && profile && (
-            <Conversations
-              myProfile={profile}
-              conversations={conversations}
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              onBlockUser={handleBlockUser}
-            />
-          )}
+              {currentTab === 'nearby' && profile && preferences && privacy && (
+                <Nearby
+                  myProfile={profile}
+                  myPreferences={preferences}
+                  privacy={privacy}
+                  signals={signals}
+                  candidatePool={discoverProfiles}
+                  onLike={handleLike}
+                  onPass={handlePass}
+                />
+              )}
 
-          {currentTab === 'profile' && profile && preferences && privacy && (
-            <Profile
-              profile={profile}
-              preferences={preferences}
-              privacy={privacy}
-              isAnonymous={isAnonymous}
-              onUpdateProfile={handleUpdateProfile}
-              onUpdatePreferences={handleUpdatePreferences}
-              onUpdatePrivacy={handleUpdatePrivacy}
-              onLinkAccount={handleLinkAccount}
-              onOpenKeypad={() => setIsKeypadOpen(true)}
-              onOpenGmail={() => {
-                setGmailComposeProps({});
-                setIsGmailOpen(true);
-              }}
-            />
-          )}
+              {currentTab === 'connections' && profile && (
+                <Connections
+                  myProfile={profile}
+                  conversations={conversations}
+                  candidatePool={discoverProfiles}
+                  onOpenChat={(convoId) => {
+                    setCurrentTab('chat');
+                  }}
+                  onExploreMore={() => setCurrentTab('discover')}
+                  onAcceptReceived={(partner) => {
+                    const candidate: DiscoveryCandidate = {
+                      profile: partner,
+                      compatibilityScore: 0.9,
+                      deterministicScore: 0.9,
+                      contextScore: 0.9,
+                      noveltyBonus: 0,
+                      confidence: 0.9,
+                      compatibilityReasons: ['Ligação recíproca confirmada'],
+                      compatibilityResult: {
+                        score: 0.9,
+                        reasons: ['Interesse mútuo estabelecido'],
+                        sharedInterests: partner.interests || [],
+                        intentAlignment: 'exact',
+                        culturalConnection: partner.countryCode === profile.countryCode ? 'same_country' : 'cross_cultural_cplp',
+                        confidence: 0.9
+                      },
+                      discoveryReason: 'Interesse mútuo',
+                      evidence: [],
+                      connectionContext: '',
+                      conversationPrompt: '',
+                      discoveryMode: 'SIMILARITY'
+                    };
+                    handleLike(candidate, undefined, true);
+                  }}
+                />
+              )}
+
+              {currentTab === 'chat' && profile && (
+                <Conversations
+                  myProfile={profile}
+                  conversations={conversations}
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  onBlockUser={handleBlockUser}
+                />
+              )}
+
+              {currentTab === 'me' && profile && preferences && privacy && (
+                <Profile
+                  profile={profile}
+                  preferences={preferences}
+                  privacy={privacy}
+                  isAnonymous={isAnonymous}
+                  onUpdateProfile={handleUpdateProfile}
+                  onUpdatePreferences={handleUpdatePreferences}
+                  onUpdatePrivacy={handleUpdatePrivacy}
+                  onLinkAccount={handleLinkAccount}
+                  onOpenKeypad={() => setIsKeypadOpen(true)}
+                  onOpenGmail={() => {
+                    setGmailComposeProps({});
+                    setIsGmailOpen(true);
+                  }}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </main>
 
-        {/* Inviolable 3-Tab Bottom Navigation: DESCUBRIR, CONVERSAS, PERFIL */}
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 backdrop-blur-md border-t border-stone-200 px-6 py-2 flex items-center justify-around z-30 shadow-lg">
-          <button
-            type="button"
-            id="tab-discover"
-            onClick={() => setCurrentTab('discover')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
-              currentTab === 'discover' ? 'text-rose-600 font-semibold' : 'text-stone-700 hover:text-stone-900'
-            }`}
-          >
-            <Compass className="w-5 h-5" />
-            <span className="text-[10px] tracking-wider uppercase">O teu Agora</span>
-          </button>
-
-          <button
-            type="button"
-            id="tab-conversations"
-            onClick={() => setCurrentTab('conversations')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition relative ${
-              currentTab === 'conversations' ? 'text-rose-600 font-semibold' : 'text-stone-700 hover:text-stone-900'
-            }`}
-          >
-            <MessageCircle className="w-5 h-5" />
-            <span className="text-[10px] tracking-wider uppercase">Conversas</span>
-            {conversations.length > 0 && (
-              <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-rose-600" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            id="tab-profile"
-            onClick={() => setCurrentTab('profile')}
-            className={`flex flex-col items-center gap-1 py-1 px-3 rounded-xl transition ${
-              currentTab === 'profile' ? 'text-rose-600 font-semibold' : 'text-stone-700 hover:text-stone-900'
-            }`}
-          >
-            <UserIcon className="w-5 h-5" />
-            <span className="text-[10px] tracking-wider uppercase">Perfil</span>
-          </button>
+        {/* Inviolable 5-Tab Bottom Navigation: Descobrir | Perto | Ligações | Chat | Eu */}
+        <nav className="shrink-0 max-w-md mx-auto w-full bg-stone-950/90 backdrop-blur-xl border-t border-stone-800/80 px-2 py-1.5 flex items-center justify-around z-30 shadow-2xl safe-pb">
+          {[
+            { id: 'discover' as const, label: 'Descobrir', icon: Compass, badge: false },
+            { id: 'nearby' as const, label: 'Perto', icon: MapPin, badge: false },
+            { id: 'connections' as const, label: 'Ligações', icon: HeartHandshake, badge: conversations.length > 0 },
+            { id: 'chat' as const, label: 'Chat', icon: MessageCircle, badge: conversations.length > 0 },
+            { id: 'me' as const, label: 'Eu', icon: UserIcon, badge: false },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = currentTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                id={`tab-${tab.id}`}
+                onClick={() => setCurrentTab(tab.id)}
+                className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-2xl transition-colors cursor-pointer select-none active:scale-95 flex-1 min-h-[48px] ${
+                  isActive ? 'text-rose-500 font-bold' : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="activeTabPill"
+                    className="absolute inset-0 bg-rose-950/40 border border-rose-800/50 rounded-2xl shadow-xs"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
+                <div className="relative z-10 flex flex-col items-center gap-0.5">
+                  <Icon className="w-5 h-5 transition-transform duration-150" />
+                  <span className="text-[10px] tracking-tight font-medium">{tab.label}</span>
+                  {tab.badge && (
+                    <span className="absolute -top-0.5 -right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-stone-950" />
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </nav>
+
 
         {/* Gmail Integration Modal */}
         <GmailModal

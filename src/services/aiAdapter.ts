@@ -6,6 +6,7 @@ import {
   AIConversationAssistant,
   AIContentAssistant
 } from '../types';
+import { authService } from './authService';
 
 export interface CompatibilityInsightRequest {
   myProfile: {
@@ -132,9 +133,10 @@ export class ClientAiAdapter implements IAiServiceAdapter {
   // Adapter implementation for compatibility
   async explainCompatibility(req: CompatibilityInsightRequest): Promise<CompatibilityInsightResponse> {
     try {
+      const headers = await authService.getAuthHeaders();
       const res = await fetch('/api/ai/compatibility', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(req)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -154,9 +156,10 @@ export class ClientAiAdapter implements IAiServiceAdapter {
   // Adapter implementation for bio assistance
   async assistBio(req: BioAssistRequest): Promise<BioAssistResponse> {
     try {
+      const headers = await authService.getAuthHeaders();
       const res = await fetch('/api/ai/bio-assist', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(req)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -176,9 +179,10 @@ export class ClientAiAdapter implements IAiServiceAdapter {
   // Adapter implementation for conversation icebreakers
   async suggestIcebreakers(req: IcebreakersRequest): Promise<IcebreakersResponse> {
     try {
+      const headers = await authService.getAuthHeaders();
       const res = await fetch('/api/ai/icebreakers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(req)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -205,9 +209,10 @@ export class ClientAiAdapter implements IAiServiceAdapter {
   // Adapter implementation for content moderation
   async moderateText(req: ContentModerationRequest): Promise<ContentModerationResponse> {
     try {
+      const headers = await authService.getAuthHeaders();
       const res = await fetch('/api/moderation/check', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(req)
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);

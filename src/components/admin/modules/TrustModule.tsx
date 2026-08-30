@@ -1054,7 +1054,7 @@ export const TrustModule: React.FC<ModuleProps & { activeSubmoduleId?: string }>
                       </div>
                       <p className="text-xs text-stone-700 mt-1">Motivo: {rst.reason}</p>
                       <span className="text-[11px] text-stone-700 mt-1 block">
-                        Aplicado por: {rst.appliedBy} · Expira em: {new Date(rst.expiresAt).toLocaleString('pt-PT')}
+                        Aplicado por: {rst.appliedBy} · Expira em: {rst?.expiresAt ? new Date(rst.expiresAt).toLocaleString('pt-PT') : '-'}
                       </span>
                     </div>
 

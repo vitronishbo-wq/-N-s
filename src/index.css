@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+@layer utilities {
+  /* Safe area padding for modern mobile devices */
+  .safe-pb {
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+  .safe-pt {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  
+  /* Hide scrollbar while preserving touch scrolling */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+html, body {
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}

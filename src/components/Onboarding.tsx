@@ -5,7 +5,8 @@ import { CPLPCountryCode, RelationshipIntent, UserProfile } from '../types';
 import { processProfileMedia } from '../services/media';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { ColdStartEngine } from '../services/coldStart';
-import { Sparkles, MapPin, HeartHandshake, Heart, Users, Globe, ArrowRight, ArrowLeft, Camera, Check, Shield } from 'lucide-react';
+import { Sparkles, MapPin, HeartHandshake, Heart, Users, Globe, ArrowRight, ArrowLeft, Camera, Check, Shield, LogIn, Lock, Mail, RefreshCw, X } from 'lucide-react';
+import { authService } from '../services/authService';
 
 interface OnboardingProps {
   uid: string;
@@ -15,7 +16,13 @@ interface OnboardingProps {
 
 export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenKeypad }) => {
   const [step, setStep] = useState<number>(1);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [displayName, setDisplayName] = useState('');
+
   const [age, setAge] = useState<number>(24);
   const [countryCode, setCountryCode] = useState<CPLPCountryCode>('AO');
   const [cityName, setCityName] = useState('Luanda');
@@ -160,10 +167,22 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              id="btn-open-login-onboarding"
+              onClick={() => {
+                setLoginError(null);
+                setIsLoginModalOpen(true);
+              }}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200 transition cursor-pointer"
+            >
+              Já tenho conta
+            </button>
             <span className="text-xs font-medium px-2.5 py-1 bg-stone-200 text-stone-700 rounded-full">
               Etapa {step} de 4
             </span>
           </div>
+
         </div>
 
         {/* Step indicator bar */}
@@ -481,6 +500,124 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
           </button>
         )}
       </div>
+
+      {/* Quick Login Modal for Returning Users */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-stone-200 space-y-4 animate-in fade-in zoom-in duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
+                  <LogIn className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-stone-900 leading-tight">Entrar com Conta Existente</h3>
+                  <p className="text-[10px] text-stone-500">Recupere o seu perfil e conversas</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLoginModalOpen(false)}
+                className="p-1 rounded-lg text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setLoginError(null);
+                setIsLoggingIn(true);
+                try {
+                  const res = await authService.loginWithEmailPassword(loginEmail, loginPassword);
+                  if (res.success) {
+                    setIsLoginModalOpen(false);
+                    // The onAuthStateChanged in App.tsx will automatically hydrate profile and route to Discover!
+                  } else {
+                    setLoginError(res.error || 'Falha ao iniciar sessão.');
+                  }
+                } catch (err: any) {
+                  setLoginError(err?.message || 'Erro ao autenticar.');
+                } finally {
+                  setIsLoggingIn(false);
+                }
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="text-[11px] font-bold text-stone-800 block mb-1">E-mail</label>
+                <div className="relative">
+                  <Mail className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    placeholder="seu.email@dominio.cplp"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-rose-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-stone-800 block mb-1">Senha</label>
+                <div className="relative">
+                  <Lock className="w-3.5 h-3.5 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="password"
+                    placeholder="Sua senha"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl focus:bg-white focus:outline-rose-500 font-mono"
+                    required
+                  />
+                </div>
+              </div>
+
+              {loginError && (
+                <div className="p-2.5 bg-rose-50 text-rose-700 text-xs rounded-xl border border-rose-200 font-medium">
+                  {loginError}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isLoggingIn}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {isLoggingIn ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <span>Iniciar Sessão</span>
+                )}
+              </button>
+
+              <div className="pt-2 text-center">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!loginEmail) {
+                      setLoginError('Digite o seu e-mail acima para enviar a recuperação.');
+                      return;
+                    }
+                    const res = await authService.sendPasswordRecovery(loginEmail);
+                    if (res.success) {
+                      alert(res.message || 'Instruções de recuperação enviadas para o seu e-mail.');
+                    } else {
+                      setLoginError(res.error || 'Falha ao enviar recuperação.');
+                    }
+                  }}
+                  className="text-[11px] text-rose-600 hover:underline font-medium"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
