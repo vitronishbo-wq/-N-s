@@ -54,11 +54,17 @@ service cloud.firestore {
     }
 
     // =========================================================
-    // 1. PROFILES
-    // Leitura permitida para utilizadores autenticados; escrita estrita ao proprietário.
+    // TEST & HEALTH CHECK (SDK Connectivity Diagnostics)
+    // =========================================================
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // =========================================================
+    // 1. PROFILES (Públicos para Descoberta na Comunidade CPLP)
     // =========================================================
     match /profiles/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isOwner(userId) && (
         (request.resource.data.keys().hasAny(['uid']) ? request.resource.data.uid == userId : true) &&
         (request.resource.data.keys().hasAny(['id']) ? request.resource.data.id == userId : true)
@@ -72,26 +78,24 @@ service cloud.firestore {
 
     // =========================================================
     // 2. PREFERENCES (Segurança Baseada no UID do Proprietário)
-    // Preferências privadas de descoberta: Acesso exclusivo ao proprietário (UID).
     // =========================================================
     match /preferences/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow create, update: if isOwner(userId) && (
         (request.resource.data.keys().hasAny(['uid']) ? request.resource.data.uid == userId : true)
       );
-      allow delete: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     // =========================================================
     // 3. PRIVACY (Segurança Baseada no UID do Proprietário)
-    // Configurações privadas de visibilidade: Acesso exclusivo ao proprietário (UID).
     // =========================================================
     match /privacy/{userId} {
-      allow read: if isOwner(userId);
+      allow read: if isOwner(userId) || isAdmin();
       allow create, update: if isOwner(userId) && (
         (request.resource.data.keys().hasAny(['uid']) ? request.resource.data.uid == userId : true)
       );
-      allow delete: if isOwner(userId);
+      allow delete: if isOwner(userId) || isAdmin();
     }
 
     // =========================================================
@@ -134,16 +138,16 @@ service cloud.firestore {
     match /interactions/{interactionId} {
       allow read: if isAuthenticated() && (
         resource.data.fromUid == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
         resource.data.targetUid == request.auth.uid ||
         isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.resource.data.fromUid == request.auth.uid &&
-        request.resource.data.targetUid is string &&
-        request.resource.data.targetUid != request.auth.uid
+        (request.resource.data.fromUid == request.auth.uid || request.resource.data.userId == request.auth.uid)
       );
       allow update, delete: if isAuthenticated() && (
-        resource.data.fromUid == request.auth.uid || isAdmin()
+        (resource.data.fromUid == request.auth.uid || resource.data.userId == request.auth.uid) ||
+        isAdmin()
       );
     }
 
@@ -175,8 +179,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.auth.uid in request.resource.data.participantUids &&
-        request.resource.data.participantUids.size() == 2
+        request.auth.uid in request.resource.data.participantUids
       );
       allow update, delete: if isAuthenticated() && (
         (request.auth.uid in resource.data.participantUids) ||
@@ -248,9 +251,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.targetUid is string &&
-        request.resource.data.eventType is string
+        request.resource.data.userId == request.auth.uid
       );
       allow update, delete: if false;
     }
@@ -261,9 +262,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.stage is string &&
-        request.resource.data.countryPair is list
+        request.resource.data.userId == request.auth.uid
       );
       allow update, delete: if false;
     }
@@ -274,10 +273,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow create: if isAuthenticated() && (
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.stage is string &&
-        request.resource.data.countryPair is list &&
-        request.resource.data.audit is map
+        request.resource.data.userId == request.auth.uid
       );
       allow update, delete: if false;
     }
@@ -295,7 +291,7 @@ service cloud.firestore {
     }
 
     match /community_answers/{answerId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
@@ -313,7 +309,7 @@ service cloud.firestore {
     }
 
     match /public_trust_badges/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isOwner(userId) || isAdmin();
     }
 
@@ -355,7 +351,7 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
+        (resource == null || resource.data.userId == request.auth.uid) ||
         isAdmin()
       );
     }

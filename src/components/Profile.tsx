@@ -191,12 +191,12 @@ export const Profile: React.FC<ProfileProps> = ({
   };
 
   return (
-    <div className="flex-1 max-w-md mx-auto w-full min-h-screen bg-stone-950 text-white p-3.5 pb-28 space-y-3.5 select-none overflow-y-auto">
+    <div className="flex-1 max-w-md mx-auto w-full min-h-screen bg-transparent text-white p-3.5 pb-28 space-y-3.5 select-none overflow-y-auto">
       
       {/* ─────────────────────────────────────────────────────────────
           CABEÇALHO COMPACTO & ELEGANTE (ESTILO LUXO MOBILE)
           ───────────────────────────────────────────────────────────── */}
-      <div className="bg-stone-900/90 backdrop-blur-md rounded-3xl p-4 border border-stone-800 shadow-xl flex items-center justify-between gap-3">
+      <div className="bg-stone-900/80 backdrop-blur-md rounded-3xl p-4 border border-stone-800 shadow-xl flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-rose-500/80 shrink-0 bg-stone-800 shadow-inner">
             <OptimizedImage

@@ -1,4 +1,5 @@
 import {
+  auth,
   db,
   doc,
   setDoc,
@@ -223,21 +224,23 @@ export class McrEventLogger {
   public async queryAuditEvents(filters?: McrAuditQueryFilters): Promise<McrAuditEvent[]> {
     try {
       const maxLimit = Math.min(filters?.limitCount || 100, 500);
-      let q = query(
-        collection(db, 'mcr_audit_events'),
-        limit(maxLimit)
-      );
+      const activeUid = filters?.userId || auth.currentUser?.uid;
+      let q = activeUid
+        ? query(
+            collection(db, 'mcr_audit_events'),
+            where('userId', '==', activeUid),
+            limit(maxLimit)
+          )
+        : query(
+            collection(db, 'mcr_audit_events'),
+            limit(maxLimit)
+          );
 
-      if (filters?.userId) {
-        q = query(
-          collection(db, 'mcr_audit_events'),
-          where('userId', '==', filters.userId),
-          limit(maxLimit)
-        );
-      } else if (filters?.stage) {
+      if (filters?.stage && activeUid) {
         const canonical = this.normalizeStage(filters.stage);
         q = query(
           collection(db, 'mcr_audit_events'),
+          where('userId', '==', activeUid),
           where('stage', '==', canonical),
           limit(maxLimit)
         );

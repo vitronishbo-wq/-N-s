@@ -266,9 +266,9 @@ export const Conversations: React.FC<ConversationsProps> = ({
     const canMarkMeaningful = currentMessages.length >= 2 && !isMeaningful;
 
     return (
-      <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] max-w-md mx-auto w-full bg-white border-x border-stone-200">
+      <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] max-w-md mx-auto w-full bg-stone-950/80 border-x border-stone-800 text-stone-100">
         {/* Chat Top Header */}
-        <div className="p-3.5 border-b border-stone-200 flex items-center justify-between bg-white sticky top-0 z-10">
+        <div className="p-3.5 border-b border-stone-800/80 flex items-center justify-between bg-stone-950/90 backdrop-blur-xl sticky top-0 z-10">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -276,7 +276,7 @@ export const Conversations: React.FC<ConversationsProps> = ({
                 setSelectedConvoId(null);
                 setIcebreakers([]);
               }}
-              className="p-1.5 -ml-1 text-stone-600 hover:text-stone-900 rounded-lg transition"
+              className="p-1.5 -ml-1 text-stone-400 hover:text-stone-100 rounded-xl transition cursor-pointer"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -285,18 +285,18 @@ export const Conversations: React.FC<ConversationsProps> = ({
                 src={otherUser.profilePhoto}
                 alt={otherUser.displayName}
                 variant="avatar"
-                className="w-10 h-10 rounded-full border border-stone-200"
+                className="w-10 h-10 rounded-full border border-stone-700"
               />
               <span className="absolute bottom-0 right-0 text-xs leading-none">{countryInfo.flag}</span>
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <h3 className="font-semibold text-stone-900 text-sm leading-tight">{otherUser.displayName}</h3>
+                <h3 className="font-semibold text-stone-100 text-sm leading-tight">{otherUser.displayName}</h3>
                 {partnerBadges.some(b => b.type === 'identity_verified') && (
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" title="Identidade Verificada" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" title="Identidade Verificada" />
                 )}
               </div>
-              <p className="text-[11px] text-stone-700">{otherUser.cityName || countryInfo.name}</p>
+              <p className="text-[11px] text-stone-400">{otherUser.cityName || countryInfo.name}</p>
             </div>
           </div>
 
@@ -309,7 +309,7 @@ export const Conversations: React.FC<ConversationsProps> = ({
               }
             }}
             title="Bloquear usuário"
-            className="p-2 text-stone-400 hover:text-rose-600 transition rounded-lg"
+            className="p-2 text-stone-400 hover:text-rose-400 transition rounded-xl cursor-pointer"
           >
             <ShieldAlert className="w-4 h-4" />
           </button>
@@ -317,15 +317,15 @@ export const Conversations: React.FC<ConversationsProps> = ({
 
         {/* Meaningful Connection Feedback Bar (PONTO 1 & PONTO 2: MCR Engine) */}
         {canMarkMeaningful && (
-          <div className="bg-gradient-to-r from-rose-50 to-amber-50 px-3.5 py-2 border-b border-rose-100 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[11px] text-stone-800">
-              <HeartHandshake className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+          <div className="bg-rose-950/50 px-3.5 py-2 border-b border-rose-900/60 flex items-center justify-between backdrop-blur-sm">
+            <div className="flex items-center gap-1.5 text-[11px] text-rose-200">
+              <HeartHandshake className="w-3.5 h-3.5 text-rose-400 shrink-0" />
               <span className="font-medium">Sentiram uma sintonia genuína?</span>
             </div>
             <button
               type="button"
               onClick={handleMarkMeaningfulConnection}
-              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold rounded-full transition shadow-2xs cursor-pointer flex items-center gap-1"
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-bold rounded-full transition shadow-xs cursor-pointer flex items-center gap-1"
             >
               <Sparkles className="w-3 h-3" />
               <span>Confirmar Conexão Real</span>
@@ -334,25 +334,25 @@ export const Conversations: React.FC<ConversationsProps> = ({
         )}
 
         {isMeaningful && (
-          <div className="bg-emerald-50 px-3.5 py-1.5 border-b border-emerald-100 flex items-center gap-1.5 text-[11px] text-emerald-800">
-            <Check className="w-3.5 h-3.5 text-emerald-600" />
+          <div className="bg-emerald-950/50 px-3.5 py-1.5 border-b border-emerald-900/60 flex items-center gap-1.5 text-[11px] text-emerald-300">
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
             <span className="font-semibold">Conexão Significativa confirmada (MCR +1)</span>
           </div>
         )}
 
         {/* Message List */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-stone-50/50">
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-stone-950/40">
           {currentMessages.length === 0 ? (
-            <div className="text-center py-10 text-stone-700 space-y-3">
-              <p className="text-xs font-semibold text-stone-900">Vocês deram match no ÉNós! 💫</p>
-              <p className="text-xs text-stone-600">Inicie uma conversa calorosa e respeitosa.</p>
+            <div className="text-center py-10 text-stone-400 space-y-3">
+              <p className="text-xs font-semibold text-stone-200">Vocês deram match no ÉNós! 💫</p>
+              <p className="text-xs text-stone-400">Inicie uma conversa calorosa e respeitosa.</p>
               <button
                 type="button"
                 onClick={handleLoadIcebreakers}
                 disabled={loadingIcebreakers}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-medium hover:bg-rose-100 transition"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-950/60 text-rose-300 border border-rose-800/80 rounded-full text-xs font-medium hover:bg-rose-900/60 transition cursor-pointer"
               >
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 text-rose-400" />
                 {loadingIcebreakers ? 'Gerando quebra-gelo...' : 'Sugerir Quebra-Gelo IA'}
               </button>
             </div>
@@ -365,10 +365,10 @@ export const Conversations: React.FC<ConversationsProps> = ({
                   className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 >
                   <div
-                    className={`max-w-[78%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-2xs ${
+                    className={`max-w-[78%] px-3.5 py-2.5 rounded-2xl text-xs leading-relaxed shadow-xs ${
                       isMe
                         ? 'bg-rose-600 text-white rounded-br-xs'
-                        : 'bg-white border border-stone-200 text-stone-900 rounded-bl-xs'
+                        : 'bg-stone-900 border border-stone-800 text-stone-100 rounded-bl-xs'
                     }`}
                   >
                     {msg.imageUrl && (
@@ -381,9 +381,9 @@ export const Conversations: React.FC<ConversationsProps> = ({
                     )}
                     {msg.text && <p>{msg.text}</p>}
                   </div>
-                  <span className="text-[10px] text-stone-700 mt-1 flex items-center gap-1 px-1">
+                  <span className="text-[10px] text-stone-400 mt-1 flex items-center gap-1 px-1">
                     {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {isMe && <CheckCheck className="w-3 h-3 text-rose-600" />}
+                    {isMe && <CheckCheck className="w-3 h-3 text-rose-400" />}
                   </span>
                 </div>
               );
@@ -392,8 +392,8 @@ export const Conversations: React.FC<ConversationsProps> = ({
 
           {/* Icebreaker pills if available */}
           {icebreakers.length > 0 && (
-            <div className="bg-white p-3 rounded-xl border border-rose-100 shadow-xs space-y-2 mt-2">
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-700">
+            <div className="bg-stone-900/90 p-3 rounded-2xl border border-rose-900/40 shadow-xs space-y-2 mt-2">
+              <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-400">
                 <Sparkles className="w-3 h-3" />
                 <span>Sugestões de quebra-gelo:</span>
               </div>
@@ -405,7 +405,7 @@ export const Conversations: React.FC<ConversationsProps> = ({
                     onClick={() => {
                       setInputText(item);
                     }}
-                    className="w-full text-left p-2 rounded-lg bg-stone-50 hover:bg-rose-50 text-xs text-stone-800 border border-stone-200/80 transition"
+                    className="w-full text-left p-2 rounded-xl bg-stone-950/80 hover:bg-stone-800 text-xs text-stone-200 border border-stone-800 transition cursor-pointer"
                   >
                     "{item}"
                   </button>
@@ -418,10 +418,10 @@ export const Conversations: React.FC<ConversationsProps> = ({
         </div>
 
         {/* Chat Input Bar */}
-        <form onSubmit={handleSend} className="p-3 border-t border-stone-200 bg-white flex items-center gap-2">
+        <form onSubmit={handleSend} className="p-3 border-t border-stone-800/80 bg-stone-950/90 flex items-center gap-2">
           <label
             htmlFor="chat-image-input"
-            className="p-2.5 text-stone-500 hover:text-rose-600 hover:bg-rose-50 rounded-full cursor-pointer transition"
+            className="p-2.5 text-stone-400 hover:text-rose-400 hover:bg-stone-900 rounded-full cursor-pointer transition"
           >
             <ImageIcon className="w-5 h-5" />
           </label>
@@ -440,14 +440,14 @@ export const Conversations: React.FC<ConversationsProps> = ({
             onChange={e => setInputText(e.target.value)}
             placeholder={sendingImage ? 'Comprimindo foto...' : 'Mensagem...'}
             disabled={sendingImage}
-            className="flex-1 px-4 py-2.5 bg-stone-100 border border-transparent rounded-full text-xs text-stone-900 placeholder-stone-400 focus:bg-white focus:border-rose-500 focus:outline-none"
+            className="flex-1 px-4 py-2.5 bg-stone-900 border border-stone-800 rounded-full text-xs text-stone-100 placeholder-stone-500 focus:border-rose-500 focus:outline-none"
           />
 
           <button
             type="submit"
             id="btn-send-message"
             disabled={!inputText.trim() || sendingImage}
-            className="w-10 h-10 rounded-full bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 disabled:opacity-40 transition shadow-xs"
+            className="w-10 h-10 rounded-full bg-rose-600 text-white flex items-center justify-center hover:bg-rose-500 disabled:opacity-40 transition shadow-xs cursor-pointer"
           >
             <Send className="w-4 h-4" />
           </button>
@@ -458,26 +458,26 @@ export const Conversations: React.FC<ConversationsProps> = ({
 
   // Conversation List View
   return (
-    <div className="flex-1 max-w-md mx-auto w-full p-4 pb-20 sm:pb-6">
+    <div className="flex-1 max-w-md mx-auto w-full p-4 pb-20 sm:pb-6 text-stone-100">
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-stone-900 tracking-tight">Conversas</h2>
-          <p className="text-xs text-stone-700">Seus matches e conexões na comunidade lusófona.</p>
+          <h2 className="text-xl font-bold text-white tracking-tight">Conversas</h2>
+          <p className="text-xs text-stone-400">Seus matches e conexões na comunidade lusófona.</p>
         </div>
       </div>
 
       {conversations.length === 0 ? (
-        <div className="bg-white rounded-2xl p-8 border border-stone-200 text-center mt-6">
-          <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center mx-auto mb-3 text-rose-600">
+        <div className="bg-stone-900/70 backdrop-blur-md rounded-2xl p-8 border border-stone-800 text-center mt-6">
+          <div className="w-12 h-12 rounded-full bg-rose-950/60 border border-rose-800/60 flex items-center justify-center mx-auto mb-3 text-rose-400">
             💬
           </div>
-          <h3 className="text-sm font-bold text-stone-900 mb-1">Nenhuma conversa ainda</h3>
-          <p className="text-xs text-stone-700 max-w-xs mx-auto">
+          <h3 className="text-sm font-bold text-white mb-1">Nenhuma conversa ainda</h3>
+          <p className="text-xs text-stone-400 max-w-xs mx-auto">
             Quando você e outra pessoa se aproximarem no Descobrir, a conversa aparecerá aqui automaticamente.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-stone-200 divide-y divide-stone-100 overflow-hidden shadow-2xs">
+        <div className="bg-stone-900/70 backdrop-blur-md rounded-2xl border border-stone-800 divide-y divide-stone-800/70 overflow-hidden shadow-xs">
           {conversations.map(convo => {
             const partnerUid = convo.participantUids.find(uid => uid !== myProfile.uid) || '';
             const partner = convo.participants?.[partnerUid] || convo.participantDetails?.[partnerUid];
@@ -490,30 +490,30 @@ export const Conversations: React.FC<ConversationsProps> = ({
                 type="button"
                 id={`convo-item-${convo.id}`}
                 onClick={() => setSelectedConvoId(convo.id)}
-                className="w-full p-3.5 flex items-center gap-3 hover:bg-stone-50 transition text-left"
+                className="w-full p-3.5 flex items-center gap-3 hover:bg-stone-800/60 transition text-left cursor-pointer"
               >
                 <div className="relative shrink-0">
                   <OptimizedImage
                     src={partner.profilePhoto}
                     alt={partner.displayName}
                     variant="thumbnail"
-                    className="w-12 h-12 rounded-full border border-stone-200"
+                    className="w-12 h-12 rounded-full border border-stone-700"
                   />
-                  <span className="absolute bottom-0 right-0 text-xs leading-none bg-white rounded-full p-0.5 shadow-2xs">
+                  <span className="absolute bottom-0 right-0 text-xs leading-none bg-stone-900 rounded-full p-0.5 shadow-xs border border-stone-700">
                     {country.flag}
                   </span>
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-stone-900 text-xs truncate">{partner.displayName}</h4>
+                    <h4 className="font-semibold text-white text-xs truncate">{partner.displayName}</h4>
                     {convo.lastMessageTimestamp && (
-                      <span className="text-[10px] text-stone-700">
+                      <span className="text-[10px] text-stone-400">
                         {new Date(convo.lastMessageTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-stone-700 truncate mt-0.5">
+                  <p className="text-xs text-stone-400 truncate mt-0.5">
                     {convo.lastMessageText || 'Novo match! Inicie a conversa.'}
                   </p>
                 </div>

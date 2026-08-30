@@ -276,12 +276,12 @@ export const Connections: React.FC<ConnectionsProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full bg-stone-950 text-white relative select-none overflow-hidden">
+    <div className="flex-1 flex flex-col w-full h-full bg-transparent text-white relative select-none overflow-hidden">
       {/* ─────────────────────────────────────────────────────────────
           CAMADA 1 — NAVEGAÇÃO RIGOROSA DE LIGAÇÕES
           ❤️ Recebidas | ❤️ Enviadas | 🤝 Mútuas
           ───────────────────────────────────────────────────────────── */}
-      <div className="px-3 pt-3 pb-2 bg-stone-950/95 backdrop-blur-md border-b border-stone-800 z-20 shrink-0">
+      <div className="px-3 pt-3 pb-2 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
         <div className="flex items-center justify-between gap-1.5 p-1 bg-stone-900 rounded-2xl border border-stone-800">
           {[
             { id: 'received', label: 'Recebidas', icon: Heart, count: counts.received, color: 'text-rose-400' },

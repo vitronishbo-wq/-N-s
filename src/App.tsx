@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { auth, db, signInAnonymously, onAuthStateChanged, doc, getDoc, setDoc, updateDoc, deleteDoc } from './firebase/config';
 import {
@@ -16,6 +16,7 @@ import { DEMO_LUSOFONE_PROFILES } from './constants';
 import { getInitialSignals, recordSignalEvent } from './services/signals';
 import { DiscoveryAppService } from './services/discoveryService';
 import { connectionGraph } from './services/connectionGraph';
+import { relationalMemory } from './services/relationalMemory';
 import { Onboarding } from './components/Onboarding';
 import { Discover } from './components/Discover';
 import { Nearby } from './components/Nearby';
@@ -48,6 +49,32 @@ export default function App() {
 
   // App Navigation State (5 Tabs: 'discover' | 'nearby' | 'connections' | 'chat' | 'me')
   const [currentTab, setCurrentTab] = useState<'discover' | 'nearby' | 'connections' | 'chat' | 'me'>('discover');
+
+  // Tab epoch tracking to enforce complete discard of inactive/temporary state (filters, search queries, drafts)
+  const [tabEpochs, setTabEpochs] = useState<Record<string, number>>({
+    discover: 0,
+    nearby: 0,
+    connections: 0,
+    chat: 0,
+    me: 0
+  });
+
+  // Dedicated cleanup & navigation mechanism for pristine transitions
+  const handleTabChange = useCallback((nextTab: 'discover' | 'nearby' | 'connections' | 'chat' | 'me') => {
+    // 1. Force cleanup of open floating overlays, sheets and admin panels
+    setIsKeypadOpen(false);
+    setIsGmailOpen(false);
+    setGmailComposeProps({});
+
+    // 2. Increment target tab epoch to mount the newly active component cleanly without stale temporary filters/searches
+    setTabEpochs(prev => ({
+      ...prev,
+      [nextTab]: (prev[nextTab] || 0) + 1
+    }));
+
+    // 3. Update current tab
+    setCurrentTab(nextTab);
+  }, []);
 
   // Admin & Keypad State
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
@@ -122,13 +149,14 @@ export default function App() {
   useEffect(() => {
     let isMounted = true;
 
-    const initAuthAndData = async () => {
-      const stableUid = getOrCreateDeviceId();
+    // Safety timeout: Ensure loading screen unlocks within 1200ms even if network/firebase auth is delayed
+    const safetyTimer = setTimeout(() => {
       if (isMounted) {
-        setUid(stableUid);
-        setSignals(getInitialSignals(stableUid));
+        setLoading(false);
       }
+    }, 1200);
 
+    const initAuthAndData = async () => {
       // Check for previously linked account
       const storedAccountInfo = localStorage.getItem('enos_linked_account');
       if (storedAccountInfo) {
@@ -140,13 +168,32 @@ export default function App() {
         } catch {}
       }
 
-      // Attempt Firebase auth state listener
+      // Listen for authenticated user state
       const unsubscribe = onAuthStateChanged(auth, async (user) => {
-        const activeUid = user?.uid || stableUid;
+        if (!user) {
+          if (isMounted) setLoading(false);
+          return;
+        }
+
+        const activeUid = user.uid;
         if (isMounted) {
           setUid(activeUid);
-          setIsAnonymous(user ? user.isAnonymous : true);
+          setIsAnonymous(user.isAnonymous);
+          setSignals(getInitialSignals(activeUid));
         }
+
+        // Align local profile UID to active authenticated UID
+        try {
+          const localProfileStr = localStorage.getItem('enos_profile');
+          if (localProfileStr) {
+            const localP = JSON.parse(localProfileStr) as UserProfile;
+            if (localP && localP.uid !== activeUid) {
+              localP.uid = activeUid;
+              localStorage.setItem('enos_profile', JSON.stringify(localP));
+              if (isMounted) setProfile(localP);
+            }
+          }
+        } catch {}
 
         try {
           const profileDoc = await getDoc(doc(db, 'profiles', activeUid));
@@ -172,6 +219,7 @@ export default function App() {
 
           // Hydrate real Connection Graph telemetry & outcome learnings from Firestore
           await connectionGraph.syncWithFirestore(activeUid);
+          await relationalMemory.syncWithFirestore(activeUid);
         } catch (err) {
           console.info('Using fast local cached state:', err);
         } finally {
@@ -179,13 +227,12 @@ export default function App() {
         }
       });
 
+      // Ensure anonymous sign in occurs in background if not already logged in
       if (!auth.currentUser) {
-        try {
-          await signInAnonymously(auth);
-        } catch (err) {
-          console.info('Running in device guest mode with full local and firestore sync:', err);
+        signInAnonymously(auth).catch((err) => {
+          console.info('Anonymous sign in note:', err);
           if (isMounted) setLoading(false);
-        }
+        });
       }
 
       return unsubscribe;
@@ -195,6 +242,7 @@ export default function App() {
 
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimer);
       cleanupPromise.then(unsub => {
         if (typeof unsub === 'function') unsub();
       });
@@ -203,25 +251,27 @@ export default function App() {
 
   // 2. Finish Onboarding & Save to Firestore & Local Storage (2.6: Candidates already prepared)
   const handleCompleteOnboarding = async (newProfile: UserProfile) => {
-    setProfile(newProfile);
+    const activeUid = auth.currentUser?.uid || uid || newProfile.uid;
+    const finalProfile: UserProfile = { ...newProfile, uid: activeUid };
+    setProfile(finalProfile);
     try {
-      localStorage.setItem('enos_profile', JSON.stringify(newProfile));
+      localStorage.setItem('enos_profile', JSON.stringify(finalProfile));
     } catch {}
 
     const initialPrefs: UserPreferences = {
-      uid: newProfile.uid,
+      uid: activeUid,
       minAge: 18,
       maxAge: 70,
       genders: ['man', 'woman', 'non_binary', 'other'],
       countries: ['AO', 'BR', 'CV', 'GW', 'GQ', 'MZ', 'PT', 'ST', 'TL'],
-      relationshipIntents: [newProfile.intent],
+      relationshipIntents: [finalProfile.intent],
       crossCultural: true,
       verifiedOnly: false,
       discoveryEnabled: true
     };
 
     const initialPrivacy: PrivacySettings = {
-      uid: newProfile.uid,
+      uid: activeUid,
       shareApproximateLocationOnly: false,
       showAge: true,
       showOnlineStatus: true,
@@ -237,9 +287,9 @@ export default function App() {
     } catch {}
 
     try {
-      await setDoc(doc(db, 'profiles', newProfile.uid), newProfile);
-      await setDoc(doc(db, 'preferences', newProfile.uid), initialPrefs);
-      await setDoc(doc(db, 'privacy', newProfile.uid), initialPrivacy);
+      await setDoc(doc(db, 'profiles', activeUid), finalProfile);
+      await setDoc(doc(db, 'preferences', activeUid), initialPrefs);
+      await setDoc(doc(db, 'privacy', activeUid), initialPrivacy);
     } catch (e) {
       console.info('Firestore save note (saved locally):', e);
     }
@@ -514,12 +564,24 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col items-center justify-center selection:bg-rose-500/30">
-      {/* App Outer Frame Container - Responsive Mobile Canvas */}
-      <div className="w-full max-w-md h-screen max-h-screen bg-stone-950 flex flex-col relative overflow-hidden shadow-2xl border-x border-stone-850">
+    <div className="min-h-screen atmosfera-enos text-stone-100 flex flex-col items-center justify-center selection:bg-rose-500/30">
+      {/* App Outer Frame Container - Responsive Mobile Canvas with Atmosfera ÉNós */}
+      <div className="w-full max-w-md h-screen max-h-screen atmosfera-enos flex flex-col relative overflow-hidden shadow-2xl border-x border-stone-800/60">
         
+        {/* Atmosfera ÉNós: Elementos ambientais gerados 100% nativos em CSS (Sem assets/rede) */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-0 select-none" aria-hidden="true">
+          {/* Micro-ponto de luz sutil no quadrante superior */}
+          <div className="absolute top-16 left-8 text-xs text-rose-400/25 font-serif select-none drop-shadow-xs">✦</div>
+          {/* Halo difuso cálido superior */}
+          <div className="absolute -top-16 -left-16 w-56 h-56 rounded-full bg-rose-600/5 blur-3xl" />
+          {/* Micro-ponto de luz sutil no quadrante inferior */}
+          <div className="absolute bottom-28 right-10 text-xs text-amber-400/20 font-serif select-none drop-shadow-xs">✦</div>
+          {/* Halo difuso âmbar inferior */}
+          <div className="absolute -bottom-16 -right-16 w-60 h-60 rounded-full bg-amber-600/4 blur-3xl" />
+        </div>
+
         {/* Top Header - Oculta ruído, mantém branding discreto e estado contextual */}
-        <header className="px-4 py-2.5 bg-stone-950/80 backdrop-blur-xl border-b border-stone-800/80 flex items-center justify-between sticky top-0 z-20 shrink-0">
+        <header className="px-4 py-2.5 bg-stone-950/75 backdrop-blur-xl border-b border-stone-800/70 flex items-center justify-between sticky top-0 z-20 shrink-0">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -548,25 +610,31 @@ export default function App() {
             >
               <Mail className="w-3.5 h-3.5" />
             </button>
-            <span className="text-[11px] font-semibold text-stone-400 bg-stone-900 border border-stone-800 px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-semibold text-stone-400 bg-stone-900/90 border border-stone-800 px-2 py-0.5 rounded-full">
               {profile?.countryCode ? `CPLP · ${profile.cityName}` : 'CPLP'}
             </span>
           </div>
         </header>
 
-        {/* Main Content Area with Seamless Transition & Touch Scrolling */}
-        <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative">
-          <AnimatePresence mode="wait" initial={false}>
+        {/* Main Content Area with Seamless Shared Layout Transition & Touch Scrolling */}
+        <main className="flex-1 flex flex-col overflow-y-auto no-scrollbar relative z-10">
+          <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={currentTab}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.18, ease: [0.25, 1, 0.5, 1] }}
-              className="flex-1 flex flex-col w-full"
+              layoutId="mainTabActiveStage"
+              layout="position"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{
+                layout: { type: 'spring', stiffness: 380, damping: 34 },
+                opacity: { duration: 0.14, ease: 'easeInOut' }
+              }}
+              className="flex-1 flex flex-col w-full min-h-full"
             >
               {currentTab === 'discover' && profile && preferences && privacy && (
                 <Discover
+                  key={`tab-discover-${tabEpochs.discover || 0}`}
                   myProfile={profile}
                   myPreferences={preferences}
                   privacy={privacy}
@@ -582,6 +650,7 @@ export default function App() {
 
               {currentTab === 'nearby' && profile && preferences && privacy && (
                 <Nearby
+                  key={`tab-nearby-${tabEpochs.nearby || 0}`}
                   myProfile={profile}
                   myPreferences={preferences}
                   privacy={privacy}
@@ -594,13 +663,14 @@ export default function App() {
 
               {currentTab === 'connections' && profile && (
                 <Connections
+                  key={`tab-connections-${tabEpochs.connections || 0}`}
                   myProfile={profile}
                   conversations={conversations}
                   candidatePool={discoverProfiles}
                   onOpenChat={(convoId) => {
-                    setCurrentTab('chat');
+                    handleTabChange('chat');
                   }}
-                  onExploreMore={() => setCurrentTab('discover')}
+                  onExploreMore={() => handleTabChange('discover')}
                   onAcceptReceived={(partner) => {
                     const candidate: DiscoveryCandidate = {
                       profile: partner,
@@ -631,6 +701,7 @@ export default function App() {
 
               {currentTab === 'chat' && profile && (
                 <Conversations
+                  key={`tab-chat-${tabEpochs.chat || 0}`}
                   myProfile={profile}
                   conversations={conversations}
                   messages={messages}
@@ -641,6 +712,7 @@ export default function App() {
 
               {currentTab === 'me' && profile && preferences && privacy && (
                 <Profile
+                  key={`tab-me-${tabEpochs.me || 0}`}
                   profile={profile}
                   preferences={preferences}
                   privacy={privacy}
@@ -676,7 +748,7 @@ export default function App() {
                 key={tab.id}
                 type="button"
                 id={`tab-${tab.id}`}
-                onClick={() => setCurrentTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`relative flex flex-col items-center justify-center py-1.5 px-2.5 rounded-2xl transition-colors cursor-pointer select-none active:scale-95 flex-1 min-h-[48px] ${
                   isActive ? 'text-rose-500 font-bold' : 'text-stone-400 hover:text-stone-200'
                 }`}

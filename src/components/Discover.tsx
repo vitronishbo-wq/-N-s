@@ -36,8 +36,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Smart discovery modes for Camada 4
-type DiscoveryMode = 'FOR_ME' | 'NOW' | 'UNEXPECTED' | 'NEARBY' | 'CPLP';
+// Smart discovery modes for Camada 4 (focados em afinidade e exploração relacional)
+type DiscoveryMode = 'FOR_ME' | 'NOW' | 'UNEXPECTED' | 'CPLP';
 
 interface DiscoverProps {
   myProfile: UserProfile;
@@ -103,7 +103,7 @@ export const Discover: React.FC<DiscoverProps> = ({
   const filteredCandidates = useMemo(() => {
     let pool = [...candidatePool];
 
-    // Apply smart discovery mode (Camada 4)
+    // Apply smart discovery mode (Camada 4 - afinidade e exploração contextual)
     if (activeSmartMode === 'NOW') {
       // Prioritize recently active or verified users
       pool.sort((a, b) => {
@@ -114,9 +114,6 @@ export const Discover: React.FC<DiscoverProps> = ({
     } else if (activeSmartMode === 'UNEXPECTED') {
       // Introduce diverse cross-cultural members
       pool.sort(() => Math.random() - 0.5);
-    } else if (activeSmartMode === 'NEARBY') {
-      // Local city first
-      pool = pool.filter(c => c.cityName?.toLowerCase() === myProfile?.cityName?.toLowerCase() || c.countryCode === myProfile?.countryCode);
     } else if (activeSmartMode === 'CPLP') {
       // Broad CPLP pool with cross-cultural flags
       pool = pool.filter(c => c.countryCode !== myProfile?.countryCode);
@@ -239,19 +236,18 @@ export const Discover: React.FC<DiscoverProps> = ({
   }, [targetProfile, myProfile]);
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full bg-stone-950 text-white relative select-none overflow-hidden">
+    <div className="flex-1 flex flex-col w-full h-full bg-transparent text-white relative select-none overflow-hidden">
       {/* ─────────────────────────────────────────────────────────────
           CAMADA 4 — DESCOBERTA INTELIGENTE (BOTÕES SUPERIORES)
-          ✨ Para mim | 🔥 Agora | 💫 Inesperadas | 📍 Perto | 🌍 CPLP
+          ✨ Para mim | 🔥 Agora | 💫 Inesperadas | 🌍 Lusofonia CPLP
           ───────────────────────────────────────────────────────────── */}
-      <div className="px-3 py-2 bg-stone-950/90 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
+      <div className="px-3 py-2 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
             { id: 'FOR_ME', label: 'Para mim', icon: Sparkles, color: 'text-amber-400' },
             { id: 'NOW', label: 'Agora', icon: Flame, color: 'text-rose-500' },
             { id: 'UNEXPECTED', label: 'Inesperadas', icon: Shuffle, color: 'text-purple-400' },
-            { id: 'NEARBY', label: 'Perto', icon: MapPin, color: 'text-emerald-400' },
-            { id: 'CPLP', label: 'CPLP', icon: Globe, color: 'text-cyan-400' }
+            { id: 'CPLP', label: 'Lusofonia CPLP', icon: Globe, color: 'text-cyan-400' }
           ].map(mode => {
             const Icon = mode.icon;
             const isActive = activeSmartMode === mode.id;

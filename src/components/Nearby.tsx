@@ -241,12 +241,12 @@ export const Nearby: React.FC<NearbyProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full h-full bg-stone-950 text-white relative select-none overflow-hidden">
+    <div className="flex-1 flex flex-col w-full h-full bg-transparent text-white relative select-none overflow-hidden">
       {/* ─────────────────────────────────────────────────────────────
           CAMADA 4 — CONTEXTO LOCAL (TOPO)
           🏙️ Cidade | 🎓 Universidade | 💼 Profissionais | 🎵 Interesses | ❤️ Relacionamento
           ───────────────────────────────────────────────────────────── */}
-      <div className="px-3 py-2 bg-stone-950/95 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
+      <div className="px-3 py-2 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
             { id: 'city', label: myProfile?.cityName || 'Cidade', icon: '🏙️' },
