@@ -7,7 +7,7 @@ import {
   DiscoveryCandidate,
   UserProfile
 } from '../types';
-import { db, doc, setDoc, serverTimestamp } from '../firebase/config';
+import { auth, db, doc, setDoc, serverTimestamp } from '../firebase/config';
 
 const DATA_SAVER_STORAGE_KEY = 'enos_data_saver_settings_v3';
 const OFFLINE_QUEUE_STORAGE_KEY = 'enos_offline_events_queue_v3';
@@ -662,6 +662,8 @@ export class DataSaverService {
    */
   public async flushQueue(): Promise<number> {
     if (this.isFlushing || this.queue.length === 0 || !this.isOnline()) return 0;
+    if (!auth.currentUser) return 0;
+    const currentUid = auth.currentUser.uid;
     this.isFlushing = true;
     let flushedCount = 0;
 
@@ -674,6 +676,8 @@ export class DataSaverService {
         if (item.type === 'like' || item.type === 'pass') {
           await setDoc(doc(db, 'interactions', docKey), {
             ...item.payload,
+            userId: currentUid,
+            fromUid: currentUid,
             type: item.type,
             idempotencyKey: docKey,
             syncedAt: Date.now(),
@@ -683,6 +687,8 @@ export class DataSaverService {
         } else if (item.type === 'message') {
           await setDoc(doc(db, 'offline_messages', docKey), {
             ...item.payload,
+            userId: currentUid,
+            senderId: currentUid,
             idempotencyKey: docKey,
             syncedAt: Date.now(),
             serverTimestamp: serverTimestamp()
@@ -691,6 +697,7 @@ export class DataSaverService {
         } else if (item.type === 'telemetry' || item.type === 'outcome' || item.type === 'mcr_event') {
           await setDoc(doc(db, 'offline_events', docKey), {
             ...item.payload,
+            userId: currentUid,
             type: item.type,
             idempotencyKey: docKey,
             syncedAt: Date.now(),

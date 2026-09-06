@@ -1,4 +1,4 @@
-import { db, doc, setDoc, addDoc, collection, serverTimestamp } from '../firebase/config';
+import { auth, db, doc, setDoc, addDoc, collection, serverTimestamp } from '../firebase/config';
 import { UserInteractionRecord } from '../types';
 
 /**
@@ -14,9 +14,11 @@ export async function persistCommunityAnswer(
   questionTheme: string,
   answer: string
 ): Promise<string | null> {
+  if (!auth.currentUser) return null;
+  const activeUid = auth.currentUser.uid;
   try {
     const docRef = await addDoc(collection(db, 'community_answers'), {
-      userId,
+      userId: activeUid,
       userDisplayName,
       userCityName,
       userCountryCode,
@@ -43,11 +45,13 @@ export async function persistDiscoveryEvent(
   eventType: 'candidate_shown' | 'reason_viewed' | 'voice_played' | 'approach_initiated' | 'pass' | 'firstConnectionMoment',
   metadata?: Record<string, unknown>
 ): Promise<void> {
+  if (!auth.currentUser) return;
+  const activeUid = auth.currentUser.uid;
   try {
     const eventId = `evt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     await setDoc(doc(db, 'discovery_events', eventId), {
       eventId,
-      userId,
+      userId: activeUid,
       targetUid,
       eventType,
       metadata: metadata || {},

@@ -169,31 +169,33 @@ export class McrEventLogger {
     };
 
     // 1. Primary Immutable Audit Write: /mcr_audit_events/{eventId}
-    try {
-      await setDoc(doc(db, 'mcr_audit_events', eventId), {
-        ...auditEvent,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn('McrEventLogger: Firestore mcr_audit_events persistence failed:', err);
-    }
+    if (auth.currentUser && auth.currentUser.uid === auditEvent.userId) {
+      try {
+        await setDoc(doc(db, 'mcr_audit_events', eventId), {
+          ...auditEvent,
+          serverTimestamp: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('McrEventLogger: Firestore mcr_audit_events persistence failed:', err);
+      }
 
-    // 2. Mirroring Write: /connection_events/{eventId} for real-time connection graph sync
-    try {
-      await setDoc(doc(db, 'connection_events', eventId), {
-        id: eventId,
-        userId: auditEvent.userId,
-        targetUid: auditEvent.targetUid,
-        stage: auditEvent.stage,
-        countryPair: auditEvent.countryPair,
-        communityTag: auditEvent.communityTag,
-        discoveryOrigin: auditEvent.discoveryOrigin,
-        metadata: auditEvent.metadata,
-        timestamp: auditEvent.timestamp,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch (err) {
-      console.warn('McrEventLogger: Firestore connection_events mirror failed:', err);
+      // 2. Mirroring Write: /connection_events/{eventId} for real-time connection graph sync
+      try {
+        await setDoc(doc(db, 'connection_events', eventId), {
+          id: eventId,
+          userId: auditEvent.userId,
+          targetUid: auditEvent.targetUid,
+          stage: auditEvent.stage,
+          countryPair: auditEvent.countryPair,
+          communityTag: auditEvent.communityTag,
+          discoveryOrigin: auditEvent.discoveryOrigin,
+          metadata: auditEvent.metadata,
+          timestamp: auditEvent.timestamp,
+          serverTimestamp: serverTimestamp()
+        });
+      } catch (err) {
+        console.warn('McrEventLogger: Firestore connection_events mirror failed:', err);
+      }
     }
 
     return auditEvent;
@@ -225,16 +227,14 @@ export class McrEventLogger {
     try {
       const maxLimit = Math.min(filters?.limitCount || 100, 500);
       const activeUid = filters?.userId || auth.currentUser?.uid;
-      let q = activeUid
-        ? query(
-            collection(db, 'mcr_audit_events'),
-            where('userId', '==', activeUid),
-            limit(maxLimit)
-          )
-        : query(
-            collection(db, 'mcr_audit_events'),
-            limit(maxLimit)
-          );
+      if (!activeUid) {
+        return [];
+      }
+      let q = query(
+        collection(db, 'mcr_audit_events'),
+        where('userId', '==', activeUid),
+        limit(maxLimit)
+      );
 
       if (filters?.stage && activeUid) {
         const canonical = this.normalizeStage(filters.stage);

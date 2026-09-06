@@ -286,12 +286,14 @@ export default function App() {
       localStorage.setItem('enos_privacy', JSON.stringify(initialPrivacy));
     } catch {}
 
-    try {
-      await setDoc(doc(db, 'profiles', activeUid), finalProfile);
-      await setDoc(doc(db, 'preferences', activeUid), initialPrefs);
-      await setDoc(doc(db, 'privacy', activeUid), initialPrivacy);
-    } catch (e) {
-      console.info('Firestore save note (saved locally):', e);
+    if (auth.currentUser && auth.currentUser.uid === activeUid) {
+      try {
+        await setDoc(doc(db, 'profiles', activeUid), finalProfile);
+        await setDoc(doc(db, 'preferences', activeUid), initialPrefs);
+        await setDoc(doc(db, 'privacy', activeUid), initialPrivacy);
+      } catch (e) {
+        console.info('Firestore save note (saved locally):', e);
+      }
     }
   };
 
@@ -400,10 +402,12 @@ export default function App() {
     const newP = { ...profile, ...updated, updatedAt: Date.now() };
     setProfile(newP);
     try { localStorage.setItem('enos_profile', JSON.stringify(newP)); } catch {}
-    try {
-      await setDoc(doc(db, 'profiles', uid), newP);
-    } catch (e) {
-      console.info('Firestore profile sync note:', e);
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      try {
+        await setDoc(doc(db, 'profiles', uid), newP);
+      } catch (e) {
+        console.info('Firestore profile sync note:', e);
+      }
     }
   };
 
@@ -412,10 +416,12 @@ export default function App() {
     const newPrefs = { ...preferences, ...updated };
     setPreferences(newPrefs);
     try { localStorage.setItem('enos_preferences', JSON.stringify(newPrefs)); } catch {}
-    try {
-      await setDoc(doc(db, 'preferences', uid), newPrefs);
-    } catch (e) {
-      console.info('Firestore preferences sync note:', e);
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      try {
+        await setDoc(doc(db, 'preferences', uid), newPrefs);
+      } catch (e) {
+        console.info('Firestore preferences sync note:', e);
+      }
     }
   };
 
@@ -424,10 +430,12 @@ export default function App() {
     const newPriv = { ...privacy, ...updated };
     setPrivacy(newPriv);
     try { localStorage.setItem('enos_privacy', JSON.stringify(newPriv)); } catch {}
-    try {
-      await setDoc(doc(db, 'privacy', uid), newPriv);
-    } catch (e) {
-      console.info('Firestore privacy sync note:', e);
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      try {
+        await setDoc(doc(db, 'privacy', uid), newPriv);
+      } catch (e) {
+        console.info('Firestore privacy sync note:', e);
+      }
     }
   };
 
@@ -445,10 +453,12 @@ export default function App() {
       localStorage.setItem('enos_linked_account', JSON.stringify(accountData));
     } catch {}
 
-    try {
-      await setDoc(doc(db, 'users', uid), accountData, { merge: true });
-    } catch (e) {
-      console.info('Firestore user account note:', e);
+    if (auth.currentUser && auth.currentUser.uid === uid) {
+      try {
+        await setDoc(doc(db, 'users', uid), accountData, { merge: true });
+      } catch (e) {
+        console.info('Firestore user account note:', e);
+      }
     }
   };
 

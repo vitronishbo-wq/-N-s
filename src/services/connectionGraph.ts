@@ -12,7 +12,7 @@ import {
   ConnectionOutcomeLearning,
   TrustBadge
 } from '../types';
-import { db, doc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from '../firebase/config';
+import { auth, db, doc, setDoc, addDoc, collection, getDocs, query, where, orderBy, limit, serverTimestamp } from '../firebase/config';
 import { logMcrTransition, mcrEventLogger } from './mcrEventLogger';
 
 export type CommunicationStyle = 'reflective' | 'expressive' | 'direct' | 'warm';
@@ -147,7 +147,7 @@ export class HumanConnectionGraph {
    * Ensures zero data loss across reloads and multi-device sessions.
    */
   public async syncWithFirestore(userId: string): Promise<void> {
-    if (!userId) return;
+    if (!userId || !auth.currentUser || auth.currentUser.uid !== userId) return;
     try {
       // 1. Fetch user's connection events
       const eventsQuery = query(
@@ -472,13 +472,15 @@ export class HumanConnectionGraph {
     this.inMemoryLearnings.push(record);
     this.persistLocal();
 
-    try {
-      const docId = `learn_${record.userId}_${record.targetUid}_${Date.now()}`;
-      await setDoc(doc(db, 'connection_learnings', docId), {
-        ...record,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch {}
+    if (auth.currentUser && auth.currentUser.uid === record.userId) {
+      try {
+        const docId = `learn_${record.userId}_${record.targetUid}_${Date.now()}`;
+        await setDoc(doc(db, 'connection_learnings', docId), {
+          ...record,
+          serverTimestamp: serverTimestamp()
+        });
+      } catch {}
+    }
   }
 
   /**

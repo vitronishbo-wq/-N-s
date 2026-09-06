@@ -26,7 +26,7 @@ import { connectionGraph } from './connectionGraph';
 import { relationalMemory } from './relationalMemory';
 import { trustGraph } from './trustGraph';
 import { dataSaver } from './dataSaverService';
-import { db, doc, setDoc } from '../firebase/config';
+import { auth, db, doc, setDoc } from '../firebase/config';
 
 export interface AffinityWeightConfig {
   intentExact: number;
@@ -1049,7 +1049,9 @@ export class DiscoveryAppService {
     }
 
     try {
-      await setDoc(doc(db, 'conversations', convoId), newConvo);
+      if (auth.currentUser && newConvo.participantUids.includes(auth.currentUser.uid)) {
+        await setDoc(doc(db, 'conversations', convoId), newConvo);
+      }
     } catch (e) {
       console.info('Optimized background sync notice:', e);
     }

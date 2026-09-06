@@ -13,7 +13,7 @@ import {
   VerificationSubmissionPayload,
   CPLPCountryCode
 } from '../types';
-import { db, doc, setDoc, getDoc, serverTimestamp } from '../firebase/config';
+import { auth, db, doc, setDoc, getDoc, serverTimestamp } from '../firebase/config';
 import { authService } from './authService';
 
 const LOCAL_TRUST_EVIDENCE_KEY = 'enos_trust_evidences_v2';
@@ -270,13 +270,15 @@ export class TrustGraphService {
     this.verificationRequests.unshift(req);
     this.saveToStorage();
 
-    // Async record in Firestore if online
-    try {
-      setDoc(doc(db, 'verification_requests', req.id), {
-        ...req,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch {}
+    // Async record in Firestore if online and authenticated as the requesting user
+    if (auth.currentUser && auth.currentUser.uid === req.userId) {
+      try {
+        setDoc(doc(db, 'verification_requests', req.id), {
+          ...req,
+          serverTimestamp: serverTimestamp()
+        }).catch(() => {});
+      } catch {}
+    }
 
     return req;
   }
@@ -473,15 +475,17 @@ export class TrustGraphService {
     this.publicBadgesCache.set(profile.uid, eligibleBadges);
     this.saveToStorage();
 
-    // Secure persistence to Firestore (public collection holds ONLY the minimal badges)
-    try {
-      setDoc(doc(db, 'public_trust_badges', profile.uid), {
-        userId: profile.uid,
-        badges: eligibleBadges,
-        issuedByAuthority: 'enos_backend_trust_engine',
-        evaluatedAt: Date.now()
-      });
-    } catch {}
+    // Secure persistence to Firestore (public collection holds ONLY the minimal badges for current authenticated user)
+    if (auth.currentUser && auth.currentUser.uid === profile.uid) {
+      try {
+        setDoc(doc(db, 'public_trust_badges', profile.uid), {
+          userId: profile.uid,
+          badges: eligibleBadges,
+          issuedByAuthority: 'enos_backend_trust_engine',
+          evaluatedAt: Date.now()
+        }).catch(() => {});
+      } catch {}
+    }
 
     return evaluation;
   }

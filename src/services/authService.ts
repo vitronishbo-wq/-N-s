@@ -380,16 +380,32 @@ export class AuthService {
       status: 'active'
     };
 
-    try {
-      await setDoc(doc(db, 'user_sessions', this.currentSessionId), session, { merge: true });
-    } catch (e) {
-      console.info('Local session registration fallback:', e);
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+      try {
+        await setDoc(doc(db, 'user_sessions', this.currentSessionId), session, { merge: true });
+      } catch (e) {
+        console.info('Local session registration fallback:', e);
+      }
     }
 
     return session;
   }
 
   public async fetchUserSessions(userId: string): Promise<UserSession[]> {
+    if (!auth.currentUser || auth.currentUser.uid !== userId) {
+      const info = parseDeviceInfo();
+      return [{
+        sessionId: this.currentSessionId,
+        userId,
+        deviceName: `${info.deviceName} (${info.os})`,
+        browser: info.browser,
+        os: info.os,
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+        isCurrent: true,
+        status: 'active'
+      }];
+    }
     try {
       const q = query(
         collection(db, 'user_sessions'),
@@ -666,10 +682,12 @@ export class AuthService {
       timestamp: Date.now()
     };
 
-    try {
-      await setDoc(doc(db, 'security_events', event.id), event);
-    } catch (e) {
-      console.info('Local security audit logging:', e);
+    if (auth.currentUser && auth.currentUser.uid === userId) {
+      try {
+        await setDoc(doc(db, 'security_events', event.id), event);
+      } catch (e) {
+        console.info('Local security audit logging:', e);
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import {
   CPLPCountryCode,
   MCRFunnelStage
 } from '../types';
-import { db, doc, setDoc, getDocs, query, collection, where, limit, serverTimestamp } from '../firebase/config';
+import { auth, db, doc, setDoc, getDocs, query, collection, where, limit, serverTimestamp } from '../firebase/config';
 import { HumanConnectionGraph } from './connectionGraph';
 
 const LOCAL_TUPLES_STORAGE_KEY = 'enos_relational_tuples_v1';
@@ -85,7 +85,7 @@ export class RelationalMemoryService {
    * Syncs user tuples and memories from Firestore
    */
   public async syncWithFirestore(userId: string): Promise<void> {
-    if (!userId) return;
+    if (!userId || !auth.currentUser || auth.currentUser.uid !== userId) return;
     try {
       const tuplesQuery = query(
         collection(db, 'relational_tuples'),
@@ -131,14 +131,16 @@ export class RelationalMemoryService {
     this.persistLocal();
     this.notify(tuple.userId);
 
-    // Save to Firestore
-    try {
-      await setDoc(doc(db, 'relational_tuples', tuple.id), {
-        ...tuple,
-        serverTimestamp: serverTimestamp()
-      });
-    } catch (e) {
-      console.info('[RelationalMemory] Tuple saved to offline queue:', tuple.id);
+    // Save to Firestore only when authenticated as the owner
+    if (auth.currentUser && auth.currentUser.uid === tuple.userId) {
+      try {
+        await setDoc(doc(db, 'relational_tuples', tuple.id), {
+          ...tuple,
+          serverTimestamp: serverTimestamp()
+        });
+      } catch (e) {
+        console.info('[RelationalMemory] Tuple saved to offline queue:', tuple.id);
+      }
     }
 
     return tuple;
