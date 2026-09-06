@@ -17,6 +17,7 @@ import { getInitialSignals, recordSignalEvent } from './services/signals';
 import { DiscoveryAppService } from './services/discoveryService';
 import { connectionGraph } from './services/connectionGraph';
 import { relationalMemory } from './services/relationalMemory';
+import { firestoreInteractionService, FirestoreInteraction } from './services/firestoreInteractionService';
 import { Onboarding } from './components/Onboarding';
 import { Discover } from './components/Discover';
 import { Nearby } from './components/Nearby';
@@ -144,6 +145,42 @@ export default function App() {
       return {};
     }
   });
+
+  // Interações e Ligações reais persistidas no Firestore
+  const [receivedInteractions, setReceivedInteractions] = useState<FirestoreInteraction[]>([]);
+  const [sentInteractions, setSentInteractions] = useState<FirestoreInteraction[]>([]);
+
+  // Escuta em tempo real no Firestore (Interações, Perfis da Comunidade e Conversas)
+  useEffect(() => {
+    if (!uid) return;
+
+    // Escuta perfis reais da comunidade no Firestore
+    const unsubProfiles = firestoreInteractionService.listenToCommunityProfiles(uid, (profiles) => {
+      setDiscoverProfiles(profiles);
+    });
+
+    // Escuta conversas do utilizador no Firestore
+    const unsubConvos = firestoreInteractionService.listenToConversations(uid, (convos) => {
+      setConversations(convos);
+    });
+
+    // Escuta interações recebidas (Likes recebidos e visualizações de perfil)
+    const unsubReceived = firestoreInteractionService.listenToReceivedInteractions(uid, (interactions) => {
+      setReceivedInteractions(interactions);
+    });
+
+    // Escuta interações enviadas (Likes enviados)
+    const unsubSent = firestoreInteractionService.listenToSentInteractions(uid, (interactions) => {
+      setSentInteractions(interactions);
+    });
+
+    return () => {
+      unsubProfiles();
+      unsubConvos();
+      unsubReceived();
+      unsubSent();
+    };
+  }, [uid]);
 
   // 1. Initialize Auth & Load Separated Domains (2.3 & 2.4)
   useEffect(() => {
@@ -297,33 +334,49 @@ export default function App() {
     }
   };
 
-  // 2.1 & 2.5: User Interactions delegated directly to DiscoveryAppService
-  const handleLike = async (targetCandidate: DiscoveryCandidate, customContextText?: string, openChat: boolean = false) => {
+  // Grava visualização de perfil no Firestore em tempo real
+  const handleRecordView = async (targetProfile: UserProfile) => {
+    if (!profile || !uid) return;
+    await firestoreInteractionService.recordProfileView(profile, targetProfile);
+  };
+
+  // 2.1 & 2.5: User Interactions persistidas no Firestore e delegadas ao DiscoveryAppService
+  const handleLike = async (
+    targetCandidate: DiscoveryCandidate,
+    customContextText?: string,
+    openChat: boolean = false,
+    isSuperInterest: boolean = false
+  ) => {
     if (!profile || !uid) return;
 
+    // 1. Gravação no Firestore real (interactions) e verificação imediata de reciprocidade/match
+    const { isMutualMatch, conversation } = await firestoreInteractionService.recordLike(
+      profile,
+      targetCandidate.profile,
+      customContextText,
+      isSuperInterest
+    );
+
+    if (isMutualMatch && conversation) {
+      setConversations(prev => {
+        const exists = prev.some(c => c.id === conversation.id);
+        if (exists) return prev;
+        return [conversation, ...prev];
+      });
+      if (openChat) {
+        handleTabChange('chat');
+      }
+    }
+
+    // 2. Atualiza sinais locais
     const discoveryService = DiscoveryAppService.getInstance();
     const result = await discoveryService.processLikeAction(
       targetCandidate,
       profile,
       signals,
-      (newConvo, initialMsg) => {
-        setConversations(prev => {
-          const updated = [newConvo, ...prev.filter(c => c.id !== newConvo.id)];
-          try { localStorage.setItem('enos_conversations', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-
-        setMessages(prev => {
-          const updated = {
-            ...prev,
-            [newConvo.id]: [initialMsg]
-          };
-          try { localStorage.setItem('enos_messages', JSON.stringify(updated)); } catch {}
-          return updated;
-        });
-
-        if (openChat) {
-          setCurrentTab('conversations');
+      (newConvo) => {
+        if (!isMutualMatch) {
+          setConversations(prev => [newConvo, ...prev.filter(c => c.id !== newConvo.id)]);
         }
       },
       customContextText
@@ -360,7 +413,7 @@ export default function App() {
     });
   };
 
-  const handleSendMessage = (convoId: string, text: string, imageUrl?: string) => {
+  const handleSendMessage = async (convoId: string, text: string, imageUrl?: string) => {
     if (!uid) return;
     const newMsg: ChatMessage = {
       id: 'msg_' + Date.now(),
@@ -395,6 +448,9 @@ export default function App() {
       try { localStorage.setItem('enos_conversations', JSON.stringify(updated)); } catch {}
       return updated;
     });
+
+    // Grava no Firestore real da conversa e sincroniza para a outra pessoa
+    await firestoreInteractionService.sendMessage(convoId, uid, text, imageUrl);
   };
 
   const handleUpdateProfile = async (updated: Partial<UserProfile>) => {
@@ -654,6 +710,7 @@ export default function App() {
                   onPass={handlePass}
                   onReport={handleReport}
                   onRecordSeen={handleRecordSeen}
+                  onRecordView={handleRecordView}
                   onUpdatePreferences={handleUpdatePreferences}
                 />
               )}
@@ -677,6 +734,8 @@ export default function App() {
                   myProfile={profile}
                   conversations={conversations}
                   candidatePool={discoverProfiles}
+                  receivedInteractions={receivedInteractions}
+                  sentInteractions={sentInteractions}
                   onOpenChat={(convoId) => {
                     handleTabChange('chat');
                   }}

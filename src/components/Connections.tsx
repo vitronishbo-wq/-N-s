@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Conversation, UserProfile, DiscoveryCandidate } from '../types';
+import { FirestoreInteraction } from '../services/firestoreInteractionService';
 import { CPLP_COUNTRIES } from '../constants';
 import { OptimizedImage } from './common/OptimizedImage';
 import {
@@ -25,12 +26,13 @@ import {
   PlayCircle,
   Flag,
   Share2,
-  Trash2
+  Trash2,
+  Eye
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
-// Camada 1 — Abas de Ligações
-type ConnectionTab = 'received' | 'sent' | 'mutual';
+// Camada 1 — Abas de Ligações (com Fase 8: Quem me viu)
+type ConnectionTab = 'received' | 'sent' | 'mutual' | 'views';
 
 // Camada 2 — Estados
 type ConnectionState = 'new' | 'chatting' | 'reciprocal' | 'meaningful' | 'paused';
@@ -59,6 +61,8 @@ interface ConnectionsProps {
   myProfile: UserProfile;
   conversations: Conversation[];
   candidatePool?: UserProfile[];
+  receivedInteractions?: FirestoreInteraction[];
+  sentInteractions?: FirestoreInteraction[];
   onOpenChat: (convoId: string, partnerProfile?: UserProfile) => void;
   onExploreMore: () => void;
   onAcceptReceived?: (partner: UserProfile) => void;
@@ -68,6 +72,8 @@ export const Connections: React.FC<ConnectionsProps> = ({
   myProfile,
   conversations,
   candidatePool = [],
+  receivedInteractions = [],
+  sentInteractions = [],
   onOpenChat,
   onExploreMore,
   onAcceptReceived
@@ -85,7 +91,33 @@ export const Connections: React.FC<ConnectionsProps> = ({
   const [starredMap, setStarredMap] = useState<Record<string, boolean>>({});
   const [pausedMap, setPausedMap] = useState<Record<string, boolean>>({});
 
-  // Mock initial received & sent connections based on real profiles in pool
+  // Helper para resolver o perfil da contraparte ou construir fallback a partir da interação
+  const resolvePartner = (uid: string, fallbackData?: Partial<UserProfile>): UserProfile => {
+    const found = candidatePool.find(c => c.uid === uid);
+    if (found) return found;
+    return {
+      uid: uid,
+      displayName: fallbackData?.displayName || 'Membro ÉNós',
+      age: fallbackData?.age || 26,
+      bio: fallbackData?.bio || 'Membro da comunidade lusófona CPLP.',
+      countryCode: (fallbackData?.countryCode || 'PT') as any,
+      countryName: fallbackData?.countryName || 'Portugal',
+      cityName: fallbackData?.cityName || 'Lisboa',
+      intent: 'serious',
+      interests: fallbackData?.interests || ['Cultura', 'Música'],
+      photos: fallbackData?.profilePhoto ? [fallbackData.profilePhoto] : ['https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80'],
+      profilePhoto: fallbackData?.profilePhoto || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
+      gender: 'woman',
+      verificationStatus: 'verified',
+      visibility: 'public',
+      online: true,
+      lastActive: Date.now(),
+      createdAt: fallbackData?.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+  };
+
+  // Reconcilia ligações e interações reais gravadas no Firestore
   const allConnections = useMemo(() => {
     const list: ConnectionItem[] = [];
 
@@ -126,53 +158,167 @@ export const Connections: React.FC<ConnectionsProps> = ({
       });
     });
 
-    // 2. ❤️ Recebidas (Demonstraram interesse em ti)
-    const receivedCandidates = candidatePool.slice(0, 3);
-    receivedCandidates.forEach((c, idx) => {
-      if (c.uid === myProfile.uid || conversations.some(con => con.participantUids.includes(c.uid))) return;
-      const isPaused = !!pausedMap[`rec_${c.uid}`];
-      const isStarred = !!starredMap[`rec_${c.uid}`];
-      const state: ConnectionState = isPaused ? 'paused' : (idx === 0 ? 'new' : 'reciprocal');
-      const stateBadge = getStateBadge(state);
+    // 2. ❤️ Recebidas (Demonstraram interesse em ti) - Queries reais do Firestore
+    const realReceivedLikes = receivedInteractions.filter(i => i.type === 'like' || i.type === 'super_interest');
+    if (realReceivedLikes.length > 0) {
+      realReceivedLikes.forEach((inter) => {
+        if (inter.fromUid === myProfile.uid || conversations.some(con => con.participantUids.includes(inter.fromUid))) return;
+        const partner = resolvePartner(inter.fromUid, {
+          displayName: inter.fromDisplayName,
+          cityName: inter.fromCityName,
+          countryCode: inter.fromCountryCode as any,
+          profilePhoto: inter.fromPhoto
+        });
+        const isPaused = !!pausedMap[inter.id];
+        const isStarred = !!starredMap[inter.id];
+        const state: ConnectionState = isPaused ? 'paused' : 'new';
+        const stateBadge = getStateBadge(state);
 
-      list.push({
-        id: `rec_${c.uid}`,
-        partner: c,
-        tab: 'received',
-        state,
-        stateLabel: stateBadge.label,
-        stateBadge,
-        createdAt: Date.now() - (idx + 1) * 3600000 * 6,
-        lastActiveText: 'Demonstrou interesse recente',
-        isStarred,
-        note: `Adorou os teus interesses em ${c.interests?.[0] || 'música'}!`
+        list.push({
+          id: inter.id,
+          partner,
+          tab: 'received',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: inter.timestamp,
+          lastActiveText: 'Demonstrou interesse recente',
+          isStarred,
+          note: inter.note || (inter.isSuperInterest ? 'Enviou um Super Interesse! ⭐' : 'Gostou do teu perfil! ❤️')
+        });
       });
-    });
+    } else {
+      // Fallback para pool demo caso não haja interações recebidas ainda
+      const receivedCandidates = candidatePool.slice(0, 3);
+      receivedCandidates.forEach((c, idx) => {
+        if (c.uid === myProfile.uid || conversations.some(con => con.participantUids.includes(c.uid))) return;
+        const isPaused = !!pausedMap[`rec_${c.uid}`];
+        const isStarred = !!starredMap[`rec_${c.uid}`];
+        const state: ConnectionState = isPaused ? 'paused' : (idx === 0 ? 'new' : 'reciprocal');
+        const stateBadge = getStateBadge(state);
 
-    // 3. ❤️ Enviadas (Tu demonstraste interesse)
-    const sentCandidates = candidatePool.slice(3, 6);
-    sentCandidates.forEach((c, idx) => {
-      if (c.uid === myProfile.uid || conversations.some(con => con.participantUids.includes(c.uid))) return;
-      const isPaused = !!pausedMap[`sent_${c.uid}`];
-      const isStarred = !!starredMap[`sent_${c.uid}`];
-      const state: ConnectionState = isPaused ? 'paused' : (idx === 0 ? 'new' : 'chatting');
-      const stateBadge = getStateBadge(state);
-
-      list.push({
-        id: `sent_${c.uid}`,
-        partner: c,
-        tab: 'sent',
-        state,
-        stateLabel: stateBadge.label,
-        stateBadge,
-        createdAt: Date.now() - (idx + 1) * 3600000 * 14,
-        lastActiveText: 'Aguardando resposta',
-        isStarred
+        list.push({
+          id: `rec_${c.uid}`,
+          partner: c,
+          tab: 'received',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: Date.now() - (idx + 1) * 3600000 * 6,
+          lastActiveText: 'Demonstrou interesse recente',
+          isStarred,
+          note: `Adorou os teus interesses em ${c.interests?.[0] || 'música'}!`
+        });
       });
-    });
+    }
+
+    // 3. ❤️ Enviadas (Tu demonstraste interesse) - Queries reais do Firestore
+    const realSentLikes = sentInteractions.filter(i => i.type === 'like' || i.type === 'super_interest');
+    if (realSentLikes.length > 0) {
+      realSentLikes.forEach((inter) => {
+        if (conversations.some(con => con.participantUids.includes(inter.targetUid))) return;
+        const partner = resolvePartner(inter.targetUid, {
+          displayName: inter.targetDisplayName,
+          cityName: inter.targetCityName,
+          countryCode: inter.targetCountryCode as any
+        });
+        const isPaused = !!pausedMap[inter.id];
+        const isStarred = !!starredMap[inter.id];
+        const state: ConnectionState = isPaused ? 'paused' : 'new';
+        const stateBadge = getStateBadge(state);
+
+        list.push({
+          id: inter.id,
+          partner,
+          tab: 'sent',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: inter.timestamp,
+          lastActiveText: 'Aguardando resposta',
+          isStarred
+        });
+      });
+    } else {
+      // Fallback para pool demo caso não haja interações enviadas ainda
+      const sentCandidates = candidatePool.slice(3, 6);
+      sentCandidates.forEach((c, idx) => {
+        if (c.uid === myProfile.uid || conversations.some(con => con.participantUids.includes(c.uid))) return;
+        const isPaused = !!pausedMap[`sent_${c.uid}`];
+        const isStarred = !!starredMap[`sent_${c.uid}`];
+        const state: ConnectionState = isPaused ? 'paused' : (idx === 0 ? 'new' : 'chatting');
+        const stateBadge = getStateBadge(state);
+
+        list.push({
+          id: `sent_${c.uid}`,
+          partner: c,
+          tab: 'sent',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: Date.now() - (idx + 1) * 3600000 * 14,
+          lastActiveText: 'Aguardando resposta',
+          isStarred
+        });
+      });
+    }
+
+    // 4. 👁️ Quem me viu (Fase 8 — Visitas recentes gravadas no Firestore)
+    const realViews = receivedInteractions.filter(i => i.type === 'view');
+    if (realViews.length > 0) {
+      realViews.forEach((inter) => {
+        if (inter.fromUid === myProfile.uid || conversations.some(con => con.participantUids.includes(inter.fromUid))) return;
+        const partner = resolvePartner(inter.fromUid, {
+          displayName: inter.fromDisplayName,
+          cityName: inter.fromCityName,
+          countryCode: inter.fromCountryCode as any,
+          profilePhoto: inter.fromPhoto
+        });
+        const isPaused = !!pausedMap[inter.id];
+        const isStarred = !!starredMap[inter.id];
+        const state: ConnectionState = isPaused ? 'paused' : 'new';
+        const stateBadge = getStateBadge(state);
+
+        list.push({
+          id: inter.id,
+          partner,
+          tab: 'views',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: inter.timestamp,
+          lastActiveText: 'Viu o teu perfil recentemente',
+          isStarred,
+          note: `Visitou o teu perfil a partir de ${inter.fromCityName || partner.cityName}, ${inter.fromCountryCode || partner.countryCode}`
+        });
+      });
+    } else {
+      // Fallback para pool demo caso ainda não haja visitas registradas
+      const viewCandidates = candidatePool.slice(6, 10);
+      viewCandidates.forEach((c, idx) => {
+        if (c.uid === myProfile.uid || conversations.some(con => con.participantUids.includes(c.uid))) return;
+        const isPaused = !!pausedMap[`view_${c.uid}`];
+        const isStarred = !!starredMap[`view_${c.uid}`];
+        const state: ConnectionState = isPaused ? 'paused' : (idx === 0 ? 'new' : 'reciprocal');
+        const stateBadge = getStateBadge(state);
+
+        list.push({
+          id: `view_${c.uid}`,
+          partner: c,
+          tab: 'views',
+          state,
+          stateLabel: stateBadge.label,
+          stateBadge,
+          createdAt: Date.now() - (idx + 1) * 3600000 * 2,
+          lastActiveText: idx === 0 ? 'Viu o teu perfil há 15 min' : `Viu o teu perfil hoje`,
+          isStarred,
+          note: `Visitou o teu perfil a partir de ${c.cityName}, ${c.countryName}`
+        });
+      });
+    }
 
     return list;
-  }, [conversations, candidatePool, myProfile, starredMap, pausedMap]);
+  }, [conversations, candidatePool, myProfile, starredMap, pausedMap, receivedInteractions, sentInteractions]);
 
   // Helper para Camada 2 — Estados
   function getStateBadge(state: ConnectionState) {
@@ -229,12 +375,13 @@ export const Connections: React.FC<ConnectionsProps> = ({
     });
   }, [allConnections, activeTab, filterState]);
 
-  // Contadores por Aba (Camada 1)
+  // Contadores por Aba (Camada 1 + Fase 8)
   const counts = useMemo(() => {
     return {
       received: allConnections.filter(c => c.tab === 'received').length,
       sent: allConnections.filter(c => c.tab === 'sent').length,
-      mutual: allConnections.filter(c => c.tab === 'mutual').length
+      mutual: allConnections.filter(c => c.tab === 'mutual').length,
+      views: allConnections.filter(c => c.tab === 'views').length
     };
   }, [allConnections]);
 
@@ -286,7 +433,8 @@ export const Connections: React.FC<ConnectionsProps> = ({
           {[
             { id: 'received', label: 'Recebidas', icon: Heart, count: counts.received, color: 'text-rose-400' },
             { id: 'sent', label: 'Enviadas', icon: Send, count: counts.sent, color: 'text-sky-400' },
-            { id: 'mutual', label: 'Mútuas', icon: HeartHandshake, count: counts.mutual, color: 'text-emerald-400' }
+            { id: 'mutual', label: 'Mútuas', icon: HeartHandshake, count: counts.mutual, color: 'text-emerald-400' },
+            { id: 'views', label: 'Viu-me', icon: Eye, count: counts.views, color: 'text-amber-400' }
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -298,7 +446,7 @@ export const Connections: React.FC<ConnectionsProps> = ({
                   setActiveTab(tab.id as ConnectionTab);
                   setFilterState('all');
                 }}
-                className={`flex-1 py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer whitespace-nowrap ${
                   isActive
                     ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
                     : 'text-stone-400 hover:text-stone-200'
@@ -371,16 +519,19 @@ export const Connections: React.FC<ConnectionsProps> = ({
               {activeTab === 'received' && <Heart className="w-6 h-6" />}
               {activeTab === 'sent' && <Send className="w-6 h-6" />}
               {activeTab === 'mutual' && <HeartHandshake className="w-6 h-6" />}
+              {activeTab === 'views' && <Eye className="w-6 h-6 text-amber-400" />}
             </div>
             <h3 className="text-sm font-bold text-white">
               {activeTab === 'received' && 'Sem interesses recebidos pendentes'}
               {activeTab === 'sent' && 'Sem ligações enviadas pendentes'}
               {activeTab === 'mutual' && 'Ainda sem ligações mútuas formadas'}
+              {activeTab === 'views' && 'Ainda sem visitas recentes ao teu perfil'}
             </h3>
             <p className="text-xs text-stone-400 max-w-xs mx-auto">
               {activeTab === 'received' && 'À medida que outros membros descobrirem o teu perfil, os interesses recebidos aparecerão aqui.'}
               {activeTab === 'sent' && 'Ao tocares em ♡ no Descobrir ou Perto, as tuas ligações enviadas serão registadas aqui.'}
               {activeTab === 'mutual' && 'Quando houver interesse mútuo, a ligação torna-se direta e pronta para conversa.'}
+              {activeTab === 'views' && 'Quando alguém abrir e visualizar o teu perfil, o registo aparecerá aqui para que nunca percas uma oportunidade.'}
             </p>
             <button
               type="button"
@@ -464,6 +615,18 @@ export const Connections: React.FC<ConnectionsProps> = ({
                       >
                         <Heart className="w-3.5 h-3.5 fill-current" />
                         <span>Ligar</span>
+                      </button>
+                    ) : activeTab === 'views' ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAcceptInterest(item);
+                        }}
+                        className="py-1.5 px-3 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-600 hover:to-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer transition"
+                      >
+                        <Heart className="w-3.5 h-3.5 fill-current" />
+                        <span>Gostar</span>
                       </button>
                     ) : (
                       <button

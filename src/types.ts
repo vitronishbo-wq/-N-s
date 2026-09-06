@@ -333,6 +333,7 @@ export interface PrivacySettings {
   showAge: boolean;
   showOnlineStatus: boolean;
   visibility: 'public' | 'hidden';
+  incognitoMode?: boolean;
 }
 
 // 4.9: Progressive Expansion Levels
@@ -1126,6 +1127,7 @@ export interface Conversation {
   };
   lastMessageText: string;
   lastMessageTimestamp: number;
+  lastMessageSenderId?: string;
   createdAt: number;
   updatedAt: number;
 }

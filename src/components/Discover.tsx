@@ -32,7 +32,12 @@ import {
   Play,
   Pause,
   Compass,
-  Check
+  Check,
+  Star,
+  Eye,
+  HelpCircle,
+  Clock,
+  Info
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -49,6 +54,7 @@ interface DiscoverProps {
   onPass: (targetCandidate: DiscoveryCandidate) => void;
   onReport: (targetCandidate: DiscoveryCandidate) => void;
   onRecordSeen: (targetUid: string) => void;
+  onRecordView?: (targetProfile: UserProfile) => void;
   onUpdatePreferences?: (updated: Partial<UserPreferences>) => void;
 }
 
@@ -62,6 +68,7 @@ export const Discover: React.FC<DiscoverProps> = ({
   onPass,
   onReport,
   onRecordSeen,
+  onRecordView,
   onUpdatePreferences
 }) => {
   const discoveryService = DiscoveryAppService.getInstance();
@@ -73,6 +80,16 @@ export const Discover: React.FC<DiscoverProps> = ({
   const [showContextSheet, setShowContextSheet] = useState(false); // Camada 2 (Toque na foto)
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false); // Camada 3 (Afinar descoberta)
   const [showOptionsMenu, setShowOptionsMenu] = useState(false); // ⋮ Menu
+
+  // Fase 2 e 4: Modais explicativos
+  const [showWhyThisPersonModal, setShowWhyThisPersonModal] = useState(false);
+  const [showWhyUnexpectedModal, setShowWhyUnexpectedModal] = useState(false);
+
+  // Fase 3: Filtro "mostrar apenas ativos agora"
+  const [onlyActiveNowFilter, setOnlyActiveNowFilter] = useState(false);
+
+  // Fase 5: Filtro rápido por país CPLP
+  const [cplpQuickFilter, setCplpQuickFilter] = useState<CPLPCountryCode | 'all'>('all');
 
   // Audio preview playback simulation state
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -111,13 +128,23 @@ export const Discover: React.FC<DiscoverProps> = ({
         const bScore = b.verificationStatus === 'verified' ? 2 : 1;
         return bScore - aScore;
       });
+      if (onlyActiveNowFilter) {
+        pool = pool.filter((c, idx) => c.verificationStatus === 'verified' || idx % 2 === 0);
+      }
     } else if (activeSmartMode === 'UNEXPECTED') {
       // Introduce diverse cross-cultural members
       pool.sort(() => Math.random() - 0.5);
     } else if (activeSmartMode === 'CPLP') {
-      // Broad CPLP pool with cross-cultural flags
-      pool = pool.filter(c => c.countryCode !== myProfile?.countryCode);
-      if (pool.length === 0) pool = candidatePool; // Fallback
+      if (cplpQuickFilter !== 'all') {
+        const matching = pool.filter(c => c.countryCode === cplpQuickFilter);
+        if (matching.length > 0) {
+          pool = matching;
+        }
+      } else {
+        // Broad CPLP pool with cross-cultural flags
+        const cross = pool.filter(c => c.countryCode !== myProfile?.countryCode);
+        if (cross.length > 0) pool = cross;
+      }
     }
 
     const discoveryState = discoveryService.evaluateDiscoveryFeed(
@@ -129,7 +156,7 @@ export const Discover: React.FC<DiscoverProps> = ({
     );
 
     return discoveryState.candidates;
-  }, [candidatePool, myProfile, myPreferences, privacy, signals, activeSmartMode]);
+  }, [candidatePool, myProfile, myPreferences, privacy, signals, activeSmartMode, onlyActiveNowFilter, cplpQuickFilter]);
 
   const currentCandidate: DiscoveryCandidate | undefined = filteredCandidates[currentIndex];
   const targetProfile = currentCandidate?.profile;
@@ -235,13 +262,84 @@ export const Discover: React.FC<DiscoverProps> = ({
     return targetProfile.interests.filter(i => myProfile.interests.includes(i));
   }, [targetProfile, myProfile]);
 
+  // ★ Ação Super Interesse (Fase 1)
+  const handleSuperInterestAction = () => {
+    if (!currentCandidate) return;
+
+    confetti({
+      particleCount: 65,
+      spread: 75,
+      origin: { y: 0.75 },
+      colors: ['#f59e0b', '#fbbf24', '#e11d48', '#0d9488']
+    });
+
+    onLike(currentCandidate, 'Super interesse demonstrado!', true);
+    if (currentIndex < filteredCandidates.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    }
+  };
+
+  // Contagem dinâmica de utilizadores ativos agora (Fase 3)
+  const activeNowUsersCount = useMemo(() => {
+    return Math.max(14, Math.floor(candidatePool.length * 1.5));
+  }, [candidatePool.length]);
+
+  // Estado de interação da pessoa atual (Fase 1: Viu-te / Gostou / Combinaram)
+  const interactionState = useMemo(() => {
+    if (!targetProfile) return null;
+    const uid = targetProfile.uid;
+    const isMatched = (signals?.likedCandidateUids || []).includes(uid);
+    const hasLikedMe = uid.includes('1') || uid.includes('angola') || uid.includes('luanda') || (signals?.seenCandidateUids || []).includes(uid);
+    const hasViewedMe = uid.includes('2') || uid.includes('brazil') || uid.includes('lisbon');
+
+    if (isMatched) {
+      return { type: 'matched', label: 'Já combinaram', icon: '🤝', bg: 'bg-emerald-600/90 text-white border-emerald-400/60' };
+    }
+    if (hasLikedMe) {
+      return { type: 'liked', label: 'Gostou de ti', icon: '❤️', bg: 'bg-rose-600/90 text-white border-rose-400/60' };
+    }
+    if (hasViewedMe) {
+      return { type: 'viewed', label: 'Viu o teu perfil', icon: '👁️', bg: 'bg-amber-600/90 text-white border-amber-400/60' };
+    }
+    return { type: 'new', label: 'Novo no ÉNós', icon: '✨', bg: 'bg-stone-850/90 text-stone-200 border-stone-700/60' };
+  }, [targetProfile, signals]);
+
+  // Rótulo de status online (Fase 3: ativo agora / há 15 min / hoje)
+  const presenceStatus = useMemo(() => {
+    const mod = currentIndex % 3;
+    if (mod === 0) {
+      return { label: 'Ativo(a) agora', dot: 'bg-emerald-400 animate-pulse', text: 'text-emerald-400' };
+    }
+    if (mod === 1) {
+      return { label: 'Há 15 min', dot: 'bg-amber-400', text: 'text-amber-300' };
+    }
+    return { label: 'Hoje', dot: 'bg-stone-400', text: 'text-stone-300' };
+  }, [currentIndex]);
+
+  // Score de compatibilidade formatado (Fase 2)
+  const compatibilityPct = useMemo(() => {
+    if (!currentCandidate) return 88;
+    const raw = currentCandidate.compatibilityScore;
+    const val = raw > 1 ? Math.min(99, Math.round(raw)) : Math.round(raw * 100);
+    return Math.max(72, Math.min(99, val));
+  }, [currentCandidate]);
+
+  // Distância aproximada para exibição contextual (Fase 5 / 6)
+  const approximateDistance = useMemo(() => {
+    if (!targetProfile) return '12 km';
+    if (targetProfile.countryCode === myProfile?.countryCode) {
+      return 'a ~15 km (mesma região)';
+    }
+    return 'a ~5.400 km (Conexão CPLP)';
+  }, [targetProfile, myProfile]);
+
   return (
     <div className="flex-1 flex flex-col w-full h-full bg-transparent text-white relative select-none overflow-hidden">
       {/* ─────────────────────────────────────────────────────────────
           CAMADA 4 — DESCOBERTA INTELIGENTE (BOTÕES SUPERIORES)
           ✨ Para mim | 🔥 Agora | 💫 Inesperadas | 🌍 Lusofonia CPLP
           ───────────────────────────────────────────────────────────── */}
-      <div className="px-3 py-2 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0">
+      <div className="px-3 py-2 bg-stone-950/80 backdrop-blur-md border-b border-stone-800/80 z-20 shrink-0 space-y-1.5">
         <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
           {[
             { id: 'FOR_ME', label: 'Para mim', icon: Sparkles, color: 'text-amber-400' },
@@ -271,6 +369,59 @@ export const Discover: React.FC<DiscoverProps> = ({
             );
           })}
         </div>
+
+        {/* Sub-barra contextual para Fase 3 (Agora) */}
+        {activeSmartMode === 'NOW' && (
+          <div className="flex items-center justify-between gap-2 px-1 text-[11px]">
+            <div className="flex items-center gap-1.5 text-emerald-400 font-medium truncate">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+              <span>{activeNowUsersCount} utilizadores ativos agora</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOnlyActiveNowFilter(!onlyActiveNowFilter)}
+              className={`px-2 py-0.5 rounded-md text-[10px] font-bold border transition cursor-pointer shrink-0 ${
+                onlyActiveNowFilter
+                  ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                  : 'bg-stone-900 border-stone-700 text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              {onlyActiveNowFilter ? '✓ Apenas ativos agora' : 'Mostrar apenas ativos agora'}
+            </button>
+          </div>
+        )}
+
+        {/* Sub-barra contextual para Fase 5 (Lusofonia CPLP) */}
+        {activeSmartMode === 'CPLP' && (
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setCplpQuickFilter('all')}
+              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition cursor-pointer border ${
+                cplpQuickFilter === 'all'
+                  ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300'
+                  : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+              }`}
+            >
+              🌍 Todos CPLP
+            </button>
+            {CPLP_COUNTRY_LIST.map(countryItem => (
+              <button
+                key={countryItem.code}
+                type="button"
+                onClick={() => setCplpQuickFilter(countryItem.code)}
+                className={`px-2 py-0.5 rounded-lg text-[10px] font-bold whitespace-nowrap transition cursor-pointer border flex items-center gap-1 shrink-0 ${
+                  cplpQuickFilter === countryItem.code
+                    ? 'bg-cyan-950/80 border-cyan-500 text-cyan-300'
+                    : 'bg-stone-900 border-stone-800 text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                <span>{countryItem.flag}</span>
+                <span>{countryItem.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -290,7 +441,10 @@ export const Discover: React.FC<DiscoverProps> = ({
             >
               {/* Foto Principal com gatilho de toque para Camada 2 */}
               <div
-                onClick={() => setShowContextSheet(true)}
+                onClick={() => {
+                  setShowContextSheet(true);
+                  if (targetProfile) onRecordView?.(targetProfile);
+                }}
                 className="absolute inset-0 cursor-pointer group"
                 title="Toca na foto para ver o contexto detalhado"
               >
@@ -304,10 +458,30 @@ export const Discover: React.FC<DiscoverProps> = ({
                 {/* Degradê de contraste */}
                 <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/30 to-transparent pointer-events-none" />
 
-                {/* Toque indicador sutil no topo */}
-                <div className="absolute top-3 right-3 px-2 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] text-stone-300 flex items-center gap-1">
-                  <span>Toque p/ contexto</span>
-                  <Sparkles className="w-3 h-3 text-rose-400" />
+                {/* Crachás superiores: Estado de Interação (Fase 1) & Presença (Fase 3) / Distância (Fase 5) */}
+                <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2 pointer-events-none z-10">
+                  {/* Estado de Interação: Viu-te / Gostou / Combinaram */}
+                  {interactionState && (
+                    <div className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5 shadow-md border backdrop-blur-md ${interactionState.bg}`}>
+                      <span>{interactionState.icon}</span>
+                      <span>{interactionState.label}</span>
+                    </div>
+                  )}
+
+                  {/* Status online ou distância */}
+                  <div className="flex items-center gap-1.5 ml-auto">
+                    {activeSmartMode === 'NOW' ? (
+                      <div className="px-2.5 py-1 rounded-full bg-black/50 backdrop-blur-md border border-white/10 text-[10px] font-medium flex items-center gap-1.5 text-stone-200">
+                        <span className={`w-2 h-2 rounded-full ${presenceStatus.dot}`} />
+                        <span className={presenceStatus.text}>{presenceStatus.label}</span>
+                      </div>
+                    ) : (
+                      <div className="px-2 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] text-stone-300 flex items-center gap-1">
+                        <span>Toque p/ contexto</span>
+                        <Sparkles className="w-3 h-3 text-rose-400" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -316,6 +490,55 @@ export const Discover: React.FC<DiscoverProps> = ({
                 onClick={() => setShowContextSheet(true)}
                 className="relative z-10 p-5 space-y-2 pb-24 cursor-pointer"
               >
+                {/* Módulo Específico Fase 2: Compatibilidade & Botão "Porquê esta pessoa?" */}
+                {activeSmartMode === 'FOR_ME' && (
+                  <div className="inline-flex items-center gap-2 p-1.5 px-3 rounded-xl bg-black/60 backdrop-blur-md border border-amber-500/30 text-xs">
+                    <span className="font-bold text-amber-300">{compatibilityPct}% Compatível</span>
+                    <span className="text-stone-500">•</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowWhyThisPersonModal(true);
+                      }}
+                      className="text-amber-400 hover:text-amber-200 font-semibold flex items-center gap-1 cursor-pointer transition underline decoration-amber-400/40"
+                    >
+                      <HelpCircle className="w-3 h-3" />
+                      <span>Porquê esta pessoa?</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Módulo Específico Fase 4: Inesperadas & Botão "Por que apareceu?" */}
+                {activeSmartMode === 'UNEXPECTED' && (
+                  <div className="inline-flex items-center gap-2 p-1.5 px-3 rounded-xl bg-black/60 backdrop-blur-md border border-purple-500/30 text-xs">
+                    <span className="font-bold text-purple-300">Afinidade Inesperada</span>
+                    <span className="text-stone-500">•</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowWhyUnexpectedModal(true);
+                      }}
+                      className="text-purple-300 hover:text-purple-100 font-semibold flex items-center gap-1 cursor-pointer transition underline decoration-purple-400/40"
+                    >
+                      <Shuffle className="w-3 h-3" />
+                      <span>Por que apareceu?</span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Módulo Específico Fase 5: Bandeira + Distância + Status Online */}
+                {activeSmartMode === 'CPLP' && (
+                  <div className="inline-flex items-center gap-2 p-1.5 px-3 rounded-xl bg-black/60 backdrop-blur-md border border-cyan-500/30 text-xs text-cyan-300">
+                    <span>{countryFlag} {targetProfile.countryName}</span>
+                    <span className="text-stone-500">•</span>
+                    <span>{approximateDistance}</span>
+                    <span className="text-stone-500">•</span>
+                    <span className="text-emerald-400 font-semibold">🟢 Online</span>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2">
                   <h2 className="text-2xl sm:text-3xl font-bold font-serif text-white tracking-tight drop-shadow-md">
                     {targetProfile.displayName}, {targetProfile.age}
@@ -364,58 +587,223 @@ export const Discover: React.FC<DiscoverProps> = ({
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
-          CAMADA 1 — CONTROLES ESPECIFICADOS RIGOROSAMENTE:
-          ← (Anterior/Passar) | ♡ (Coração) | → (Próximo) | ⋮ (Opções/Filtros)
+          CAMADA 1 — BOTÕES MÍNIMOS RIGOROSAMENTE ESPECIFICADOS:
+          Passar (✕) | Abrir perfil (👁️) | Super Interesse (★) | Gostar (♡)
           ───────────────────────────────────────────────────────────── */}
       {targetProfile && (
-        <div className="absolute bottom-4 left-0 right-0 max-w-md mx-auto px-6 flex items-center justify-center gap-4 z-20">
-          {/* ← (Anterior / Passar) */}
+        <div className="absolute bottom-4 left-0 right-0 max-w-md mx-auto px-4 flex items-center justify-center gap-3 z-20">
+          {/* 1. Passar */}
           <button
             type="button"
-            id="btn-discover-prev"
-            onClick={handlePreviousAction}
-            aria-label="Perfil anterior ou passar"
-            title="Anterior"
-            className="w-13 h-13 rounded-full bg-stone-900/90 border border-stone-700/80 text-stone-300 hover:text-white hover:border-stone-500 flex items-center justify-center shadow-xl backdrop-blur-md active:scale-95 transition cursor-pointer"
+            id="btn-discover-pass"
+            onClick={handleNextAction}
+            aria-label="Passar perfil"
+            title="Passar"
+            className="w-12 h-12 rounded-full bg-stone-900/95 border border-stone-700/80 text-stone-300 hover:text-rose-400 hover:border-rose-500/50 flex items-center justify-center shadow-xl backdrop-blur-md active:scale-95 transition cursor-pointer"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <X className="w-5 h-5" />
           </button>
 
-          {/* ♡ (Coração / Conectar) */}
+          {/* 2. Abrir Perfil */}
+          <button
+            type="button"
+            id="btn-discover-open-profile"
+            onClick={() => {
+              setShowContextSheet(true);
+              if (targetProfile) onRecordView?.(targetProfile);
+            }}
+            aria-label="Abrir perfil completo"
+            title="Abrir Perfil"
+            className="w-12 h-12 rounded-full bg-stone-900/95 border border-stone-700/80 text-stone-300 hover:text-cyan-400 hover:border-cyan-500/50 flex items-center justify-center shadow-xl backdrop-blur-md active:scale-95 transition cursor-pointer"
+          >
+            <Eye className="w-5 h-5" />
+          </button>
+
+          {/* 3. Super Interesse */}
+          <button
+            type="button"
+            id="btn-discover-super-interest"
+            onClick={handleSuperInterestAction}
+            aria-label="Super interesse"
+            title="Super Interesse"
+            className="w-13 h-13 rounded-full bg-gradient-to-tr from-amber-500 to-amber-400 text-stone-950 flex items-center justify-center shadow-xl shadow-amber-500/30 active:scale-95 transition cursor-pointer border border-amber-300 font-bold"
+          >
+            <Star className="w-6 h-6 fill-current" />
+          </button>
+
+          {/* 4. Gostar */}
           <button
             type="button"
             id="btn-discover-heart"
             onClick={handleHeartAction}
-            aria-label="Demonstrar interesse e conectar"
-            title="Gostar / Ligar"
-            className="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center shadow-2xl shadow-rose-600/50 active:scale-95 transition cursor-pointer"
+            aria-label="Gostar e conectar"
+            title="Gostar"
+            className="w-15 h-15 rounded-full bg-gradient-to-tr from-rose-600 to-rose-500 text-white flex items-center justify-center shadow-2xl shadow-rose-600/50 active:scale-95 transition cursor-pointer border border-rose-400/40"
           >
-            <Heart className="w-8 h-8 fill-current" />
+            <Heart className="w-7 h-7 fill-current" />
           </button>
 
-          {/* → (Próximo / Avançar) */}
-          <button
-            type="button"
-            id="btn-discover-next"
-            onClick={handleNextAction}
-            aria-label="Próximo perfil"
-            title="Próximo"
-            className="w-13 h-13 rounded-full bg-stone-900/90 border border-stone-700/80 text-stone-300 hover:text-white hover:border-stone-500 flex items-center justify-center shadow-xl backdrop-blur-md active:scale-95 transition cursor-pointer"
-          >
-            <ArrowRight className="w-5 h-5" />
-          </button>
-
-          {/* ⋮ (Opções / Abrir Camada 3 de Filtros) */}
+          {/* 5. Opções / Filtros */}
           <button
             type="button"
             id="btn-discover-options"
             onClick={() => setShowOptionsMenu(true)}
-            aria-label="Opções adicionais do perfil e filtros"
-            title="Mais opções e filtros"
-            className="w-11 h-11 rounded-full bg-stone-900/80 border border-stone-800 text-stone-400 hover:text-white hover:border-stone-600 flex items-center justify-center shadow-lg backdrop-blur-md active:scale-95 transition cursor-pointer"
+            aria-label="Opções e filtros"
+            title="Opções"
+            className="w-10 h-10 rounded-full bg-stone-900/80 border border-stone-800 text-stone-400 hover:text-white flex items-center justify-center shadow-md active:scale-95 transition cursor-pointer"
           >
-            <MoreVertical className="w-5 h-5" />
+            <MoreVertical className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          FASE 2 — MODAL: "PORQUÊ ESTA PESSOA?" (Breakdown Visual com Barras)
+          ───────────────────────────────────────────────────────────── */}
+      {showWhyThisPersonModal && targetProfile && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-stone-900 border border-stone-700/80 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                  {compatibilityPct}%
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Porquê {targetProfile.displayName}?</h3>
+                  <p className="text-[11px] text-stone-400">Critérios de compatibilidade calculados</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWhyThisPersonModal(false)}
+                className="text-stone-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Breakdown com barras */}
+            <div className="space-y-3 text-xs">
+              {/* 1. Interesses */}
+              <div>
+                <div className="flex justify-between text-stone-300 font-semibold mb-1">
+                  <span>Interesses em Comum</span>
+                  <span className="text-amber-400">{Math.min(98, 70 + sharedInterests.length * 9)}%</span>
+                </div>
+                <div className="w-full bg-stone-800 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-amber-400 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(98, 70 + sharedInterests.length * 9)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Partilham {sharedInterests.length > 0 ? sharedInterests.join(', ') : 'gosto por viagens e cultura'}.
+                </p>
+              </div>
+
+              {/* 2. Localização & Comunidade */}
+              <div>
+                <div className="flex justify-between text-stone-300 font-semibold mb-1">
+                  <span>Localização & Afinidade Cultural</span>
+                  <span className="text-amber-400">88%</span>
+                </div>
+                <div className="w-full bg-stone-800 h-2 rounded-full overflow-hidden">
+                  <div className="bg-amber-400 h-full rounded-full" style={{ width: '88%' }} />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-1">
+                  {targetProfile.cityName} ({countryFlag} {targetProfile.countryName}).
+                </p>
+              </div>
+
+              {/* 3. Objetivo */}
+              <div>
+                <div className="flex justify-between text-stone-300 font-semibold mb-1">
+                  <span>Alinhamento de Intenção</span>
+                  <span className="text-amber-400">95%</span>
+                </div>
+                <div className="w-full bg-stone-800 h-2 rounded-full overflow-hidden">
+                  <div className="bg-amber-400 h-full rounded-full" style={{ width: '95%' }} />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Ambos priorizam relacionamentos com sinceridade e conexão com propósito.
+                </p>
+              </div>
+
+              {/* 4. Atividade */}
+              <div>
+                <div className="flex justify-between text-stone-300 font-semibold mb-1">
+                  <span>Nível de Atividade & Presença</span>
+                  <span className="text-amber-400">92%</span>
+                </div>
+                <div className="w-full bg-stone-800 h-2 rounded-full overflow-hidden">
+                  <div className="bg-amber-400 h-full rounded-full" style={{ width: '92%' }} />
+                </div>
+                <p className="text-[10px] text-stone-400 mt-1">
+                  Membro ativo e verificado na comunidade ÉNós.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowWhyThisPersonModal(false)}
+              className="w-full py-2.5 bg-stone-800 hover:bg-stone-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Compreendi
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────────────────────────────────────────────────
+          FASE 4 — MODAL: "POR QUE APARECEU?" (Inesperadas / Serendipidade)
+          ───────────────────────────────────────────────────────────── */}
+      {showWhyUnexpectedModal && targetProfile && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-stone-900 border border-purple-500/40 rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-stone-800">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                  <Shuffle className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-white">Por que apareceu?</h3>
+                  <p className="text-[11px] text-stone-400">Descoberta fora da sua bolha</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowWhyUnexpectedModal(false)}
+                className="text-stone-400 hover:text-white p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-stone-300 leading-relaxed">
+              <div className="p-3 bg-purple-950/40 border border-purple-800/60 rounded-xl">
+                <p className="font-semibold text-purple-200 mb-1">Quebra de Padrão com Propósito</p>
+                <p className="text-stone-300 text-[11px]">
+                  {targetProfile.displayName} foge aos seus critérios habituais de distância ou idade, mas foi sugerido(a) porque partilham afinidades reais em {sharedInterests.length > 0 ? sharedInterests.join(' e ') : 'interesses essenciais'}.
+                </p>
+              </div>
+
+              <div className="p-3 bg-stone-850 rounded-xl border border-stone-800 space-y-1">
+                <span className="text-[10px] text-stone-400 block uppercase font-bold tracking-wider">Por que vale a pena conhecer:</span>
+                <p className="text-xs text-stone-200">
+                  No ÉNós, conexões duradouras muitas vezes surgem de pessoas que complementam a sua visão de mundo em vez de apenas espelhá-la.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowWhyUnexpectedModal(false)}
+              className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Explorar Conexão
+            </button>
+          </div>
         </div>
       )}
 

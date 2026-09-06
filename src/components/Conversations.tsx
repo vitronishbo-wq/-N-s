@@ -19,6 +19,7 @@ import {
   Check
 } from 'lucide-react';
 import { compressImage } from '../utils/imageCompression';
+import { firestoreInteractionService } from '../services/firestoreInteractionService';
 
 interface ConversationsProps {
   myProfile: UserProfile;
@@ -36,6 +37,7 @@ export const Conversations: React.FC<ConversationsProps> = ({
   onBlockUser
 }) => {
   const [selectedConvoId, setSelectedConvoId] = useState<string | null>(null);
+  const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [sendingImage, setSendingImage] = useState(false);
   const [icebreakers, setIcebreakers] = useState<string[]>([]);
@@ -43,11 +45,25 @@ export const Conversations: React.FC<ConversationsProps> = ({
   const [meaningfulMarked, setMeaningfulMarked] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Escuta mensagens reais da conversa ativa no Firestore
+  useEffect(() => {
+    if (!selectedConvoId) {
+      setLiveMessages([]);
+      return;
+    }
+    const unsub = firestoreInteractionService.listenToMessages(selectedConvoId, (msgs) => {
+      setLiveMessages(msgs);
+    });
+    return () => unsub();
+  }, [selectedConvoId]);
+
   const activeConvo = conversations.find(c => c.id === selectedConvoId);
   const otherUid = activeConvo?.participantUids.find(uid => uid !== myProfile.uid) || '';
   const otherUser = activeConvo?.participants?.[otherUid] || activeConvo?.participantDetails?.[otherUid];
 
-  const currentMessages = selectedConvoId ? messages[selectedConvoId] || [] : [];
+  const currentMessages = liveMessages.length > 0
+    ? liveMessages
+    : (selectedConvoId ? messages[selectedConvoId] || [] : []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

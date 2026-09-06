@@ -661,6 +661,15 @@ export class AuthService {
       await signOut(auth);
       this.currentUser = null;
       this.currentFirebaseUser = null;
+      try {
+        localStorage.removeItem('enos_profile');
+        localStorage.removeItem('enos_preferences');
+        localStorage.removeItem('enos_privacy');
+        localStorage.removeItem('enos_signals');
+        localStorage.removeItem('enos_conversations');
+        localStorage.removeItem('enos_messages');
+        sessionStorage.clear();
+      } catch {}
       this.notifySubscribers();
     } catch (err) {
       console.error('Sign out error:', err);
