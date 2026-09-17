@@ -37,7 +37,8 @@ import {
   Eye,
   HelpCircle,
   Clock,
-  Info
+  Info,
+  RotateCcw
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -56,6 +57,7 @@ interface DiscoverProps {
   onRecordSeen: (targetUid: string) => void;
   onRecordView?: (targetProfile: UserProfile) => void;
   onUpdatePreferences?: (updated: Partial<UserPreferences>) => void;
+  onResetPasses?: () => void;
 }
 
 export const Discover: React.FC<DiscoverProps> = ({
@@ -69,7 +71,8 @@ export const Discover: React.FC<DiscoverProps> = ({
   onReport,
   onRecordSeen,
   onRecordView,
-  onUpdatePreferences
+  onUpdatePreferences,
+  onResetPasses
 }) => {
   const discoveryService = DiscoveryAppService.getInstance();
 
@@ -158,16 +161,25 @@ export const Discover: React.FC<DiscoverProps> = ({
     return discoveryState.candidates;
   }, [candidatePool, myProfile, myPreferences, privacy, signals, activeSmartMode, onlyActiveNowFilter, cplpQuickFilter]);
 
+  // Ensure currentIndex stays within bounds when pool changes
+  React.useEffect(() => {
+    if (filteredCandidates.length > 0 && currentIndex >= filteredCandidates.length) {
+      setCurrentIndex(0);
+    }
+  }, [filteredCandidates.length, currentIndex]);
+
   const currentCandidate: DiscoveryCandidate | undefined = filteredCandidates[currentIndex];
   const targetProfile = currentCandidate?.profile;
 
-  // Record seen
+  // Record seen safely without loop
+  const lastRecordedUidRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (targetProfile && myProfile?.uid) {
+    if (targetProfile && myProfile?.uid && lastRecordedUidRef.current !== targetProfile.uid) {
+      lastRecordedUidRef.current = targetProfile.uid;
       onRecordSeen(targetProfile.uid);
       discoveryService.markSeenInSession(targetProfile.uid);
     }
-  }, [targetProfile?.uid, myProfile?.uid]);
+  }, [targetProfile?.uid, myProfile?.uid, onRecordSeen]);
 
   // Reset audio playback and contextual sheet on candidate switch
   React.useEffect(() => {
@@ -566,22 +578,60 @@ export const Discover: React.FC<DiscoverProps> = ({
           </AnimatePresence>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-stone-300 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-rose-500">
+            <div className="w-16 h-16 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-rose-500 shadow-inner">
               <Globe className="w-8 h-8" />
             </div>
-            <div>
-              <h3 className="text-lg font-bold text-white mb-1">Exploraste todos os perfis neste modo</h3>
+            <div className="space-y-1">
+              <h3 className="text-lg font-bold text-white">Nenhum perfil visível no momento</h3>
               <p className="text-xs text-stone-400 max-w-xs mx-auto">
-                Experimenta outro modo inteligente ou ajusta as preferências na Camada 3.
+                Podes ter visto todos os perfis recentes ou os teus filtros de país, idade e género estão restringindo os candidatos.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setIsFilterSheetOpen(true)}
-              className="py-2.5 px-5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition shadow-md cursor-pointer"
-            >
-              Ajustar Filtros
-            </button>
+            <div className="flex flex-col gap-2.5 w-full max-w-xs pt-1">
+              {onResetPasses && (
+                <button
+                  type="button"
+                  id="btn-discover-reload-feed"
+                  onClick={() => {
+                    onResetPasses();
+                    setCurrentIndex(0);
+                  }}
+                  className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold transition shadow cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Recarregar Feed (Ver Perfis Novamente)
+                </button>
+              )}
+              {onUpdatePreferences && (
+                <button
+                  type="button"
+                  id="btn-discover-expand-cplp"
+                  onClick={() => {
+                    onUpdatePreferences({
+                      crossCultural: true,
+                      countries: ['AO', 'BR', 'CV', 'GW', 'GQ', 'MZ', 'PT', 'ST', 'TL'],
+                      genders: ['man', 'woman', 'non_binary', 'other'],
+                      minAge: 18,
+                      maxAge: 70
+                    });
+                    setActiveSmartMode('CPLP');
+                    setCurrentIndex(0);
+                  }}
+                  className="w-full py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold transition shadow cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Globe className="w-4 h-4" />
+                  Expandir para Toda a Lusofonia (CPLP)
+                </button>
+              )}
+              <button
+                type="button"
+                id="btn-discover-open-filters"
+                onClick={() => setIsFilterSheetOpen(true)}
+                className="w-full py-2 px-4 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-xl text-xs font-medium border border-stone-700 transition cursor-pointer"
+              >
+                Ajustar Filtros Manualmente
+              </button>
+            </div>
           </div>
         )}
       </div>

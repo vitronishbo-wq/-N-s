@@ -43,16 +43,18 @@ export class DiscoveryExpansionPolicy {
     myPrefs: UserPreferences,
     level: ExpansionLevel
   ): UserProfile[] {
+    const rawPool = pool.filter(c => c.uid !== myProfile.uid);
+
     switch (level) {
       case 'CITY':
-        return pool.filter(
+        return rawPool.filter(
           c =>
             c.countryCode === myProfile.countryCode &&
             c.cityName?.trim().toLowerCase() === myProfile.cityName?.trim().toLowerCase()
         );
 
       case 'REGION':
-        return pool.filter(c => {
+        return rawPool.filter(c => {
           if (c.countryCode !== myProfile.countryCode) return false;
           if (myProfile.regionName && c.regionName) {
             return c.regionName.trim().toLowerCase() === myProfile.regionName.trim().toLowerCase();
@@ -62,18 +64,18 @@ export class DiscoveryExpansionPolicy {
         });
 
       case 'COUNTRY':
-        return pool.filter(c => c.countryCode === myProfile.countryCode);
+        return rawPool.filter(c => c.countryCode === myProfile.countryCode);
 
       case 'CPLP_SELECTED':
         if (myPrefs.countries && myPrefs.countries.length > 0) {
           const allowed = new Set<string>(myPrefs.countries);
-          return pool.filter(c => allowed.has(c.countryCode));
+          return rawPool.filter(c => allowed.has(c.countryCode));
         }
-        return pool.filter(c => c.countryCode === myProfile.countryCode);
+        return rawPool.filter(c => c.countryCode === myProfile.countryCode);
 
       case 'CPLP_GLOBAL':
       default:
-        return [...pool];
+        return [...rawPool];
     }
   }
 

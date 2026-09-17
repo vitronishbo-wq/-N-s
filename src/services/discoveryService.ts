@@ -179,11 +179,8 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       return false;
     }
 
-    // Excluded or already seen in current active session context
+    // Excluded in explicit context (e.g. current conversation or temporary exclusion)
     if (context?.excludeUids && context.excludeUids.includes(candidate.uid)) {
-      return false;
-    }
-    if (context?.seenInSessionUids && context.seenInSessionUids.includes(candidate.uid)) {
       return false;
     }
 
@@ -195,7 +192,7 @@ export class DiscoveryEngine implements IDiscoveryEngine {
     // 4. PASS utilizes cooldown (allowing controlled future reappearance after cooldown expires)
     const now = context?.currentTime ?? Date.now();
     const passCooldownMs = context?.recentlySeenWindowMs ?? 1000 * 60 * 60 * 24; // 24h default cooldown window
-    if (signals.passedCandidateUids && signals.passedCandidateUids.includes(candidate.uid)) {
+    if (!context?.ignorePassCooldown && signals.passedCandidateUids && signals.passedCandidateUids.includes(candidate.uid)) {
       const lastPassedAt =
         signals.passedTimestamps?.[candidate.uid] ??
         signals.recentlySeenTimestamps?.[candidate.uid];
@@ -209,28 +206,19 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       return false;
     }
 
-    // 6. Recently seen cooldown window
-    const lastSeenTime = signals.recentlySeenTimestamps?.[candidate.uid];
-    if (lastSeenTime && now - lastSeenTime < passCooldownMs) {
-      // If candidate was recently seen and not eligible to re-show in this window
-      if (!signals.passedCandidateUids?.includes(candidate.uid)) {
-        return false;
-      }
-    }
-
-    // 7. Preferences: Age bounds (Preferences = quem procuro)
+    // 6. Preferences: Age bounds (Preferences = quem procuro)
     if (candidate.age < myPrefs.minAge || candidate.age > myPrefs.maxAge) {
       return false;
     }
 
-    // 8. Preferences: Gender preferences
+    // 7. Preferences: Gender preferences
     if (myPrefs.genders && myPrefs.genders.length > 0) {
       if (!myPrefs.genders.includes(candidate.gender)) {
         return false;
       }
     }
 
-    // 9. Preferences: Cross-cultural matching (exclusively in Preferences)
+    // 8. Preferences: Cross-cultural matching (exclusively in Preferences)
     if (!myPrefs.crossCultural) {
       // If crossCultural is disabled in Preferences, candidate must be from same country
       if (candidate.countryCode !== myProfile.countryCode) {
@@ -243,7 +231,7 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       }
     }
 
-    // 10. Preferences: Verified only constraint
+    // 9. Preferences: Verified only constraint
     if (myPrefs.verifiedOnly && candidate.verificationStatus !== 'verified') {
       return false;
     }
@@ -769,7 +757,8 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       context?.threshold || 3
     );
 
-    const candidates = this.executePipeline(
+    let activeLevel = expansionResult.level;
+    let candidates = this.executePipeline(
       expansionResult.candidates,
       myProfile,
       myPrefs,
@@ -777,9 +766,33 @@ export class DiscoveryEngine implements IDiscoveryEngine {
       signals,
       {
         ...context,
-        currentExpansionLevel: expansionResult.level
+        currentExpansionLevel: activeLevel
       }
     );
+
+    // Fallback 1: If localized expansion (CITY/REGION/COUNTRY) produced 0 eligible candidates,
+    // automatically expand to the entire Lusophone pool (CPLP_GLOBAL) so the feed is never empty!
+    if (candidates.length === 0 && activeLevel !== 'CPLP_GLOBAL' && myPrefs.crossCultural) {
+      activeLevel = 'CPLP_GLOBAL';
+      candidates = this.executePipeline(
+        pool,
+        myProfile,
+        myPrefs,
+        privacySettings,
+        signals,
+        {
+          ...context,
+          currentExpansionLevel: 'CPLP_GLOBAL'
+        }
+      );
+    }
+
+    // Fallback 2: If still 0 candidates because user passed all profiles previously,
+    // allow showing passed candidates in relaxed mode if context requests or if ignorePassCooldown
+    let canResetPasses = false;
+    if (candidates.length === 0 && (signals.passedCandidateUids || []).length > 0) {
+      canResetPasses = true;
+    }
 
     const totalEligible = candidates.length;
 
@@ -798,12 +811,13 @@ export class DiscoveryEngine implements IDiscoveryEngine {
 
     const discoveryResult = {
       status: availability,
-      expansionLevel: expansionResult.level,
+      expansionLevel: activeLevel,
       candidates,
       metadata: {
         totalEvaluated,
         totalEligible,
         scarcityMessage,
+        canResetPasses,
         sessionId: context?.sessionId,
         timestamp: Date.now()
       }
@@ -812,7 +826,7 @@ export class DiscoveryEngine implements IDiscoveryEngine {
     return {
       candidates,
       availability,
-      currentExpansionLevel: expansionResult.level,
+      currentExpansionLevel: activeLevel,
       scarcityMessage,
       totalEvaluated,
       totalEligible,

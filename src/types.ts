@@ -360,6 +360,7 @@ export interface DiscoveryContext {
   currentExpansionLevel: ExpansionLevel;
   recentlySeenWindowMs?: number;
   threshold?: number;
+  ignorePassCooldown?: boolean;
 }
 
 // 4.4: Structured Interaction Event

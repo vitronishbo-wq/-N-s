@@ -13,7 +13,7 @@ import {
   DiscoveryCandidate
 } from './types';
 import { DEMO_LUSOFONE_PROFILES } from './constants';
-import { getInitialSignals, recordSignalEvent } from './services/signals';
+import { getInitialSignals, recordSignalEvent, saveSignals } from './services/signals';
 import { DiscoveryAppService } from './services/discoveryService';
 import { connectionGraph } from './services/connectionGraph';
 import { relationalMemory } from './services/relationalMemory';
@@ -395,6 +395,18 @@ export default function App() {
     setSignals(updated);
   };
 
+  const handleResetPasses = () => {
+    const updated: InteractionSignals = {
+      ...signals,
+      passedCandidateUids: [],
+      passedTimestamps: {},
+      recentlySeenTimestamps: {}
+    };
+    setSignals(updated);
+    saveSignals(updated);
+    DiscoveryAppService.getInstance().resetSession();
+  };
+
   const handleRecordSeen = (targetUid: string) => {
     const updated = recordSignalEvent(signals, { type: 'seen', targetUid });
     setSignals(updated);
@@ -769,6 +781,7 @@ export default function App() {
                   onRecordSeen={handleRecordSeen}
                   onRecordView={handleRecordView}
                   onUpdatePreferences={handleUpdatePreferences}
+                  onResetPasses={handleResetPasses}
                 />
               )}
 
