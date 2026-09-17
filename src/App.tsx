@@ -24,6 +24,7 @@ import { Nearby } from './components/Nearby';
 import { Connections } from './components/Connections';
 import { Conversations } from './components/Conversations';
 import { Profile } from './components/Profile';
+import { ProfileCompletenessBadge } from './components/profile/ProfileCompletenessBadge';
 import { AdminKeypadModal } from './components/AdminKeypadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { GmailModal } from './components/GmailModal';
@@ -663,6 +664,13 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {profile && (
+              <ProfileCompletenessBadge
+                profile={profile}
+                compact={true}
+                onOpenImprovementModal={() => handleTabChange('me')}
+              />
+            )}
             <button
               type="button"
               id="btn-open-gmail-header"

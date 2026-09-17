@@ -5,6 +5,7 @@ import { CPLPCountryCode, RelationshipIntent, UserProfile } from '../types';
 import { processProfileMedia } from '../services/media';
 import { ClientAiAdapter } from '../services/aiAdapter';
 import { ColdStartEngine } from '../services/coldStart';
+import { calculateProfileCompleteness } from '../services/profileCompleteness';
 import { Sparkles, MapPin, HeartHandshake, Heart, Users, Globe, ArrowRight, ArrowLeft, Camera, Check, Shield, LogIn, Lock, Mail, RefreshCw, X } from 'lucide-react';
 import { authService } from '../services/authService';
 
@@ -37,6 +38,19 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
   const selectedCountry = CPLP_COUNTRIES[countryCode];
   const aiAdapter = ClientAiAdapter.getInstance();
   const coldStart = ColdStartEngine.getInstance();
+
+  // Cálculo dinâmico do percentual de aperfeiçoamento durante a subinscrição assistida
+  const completeness = calculateProfileCompleteness({
+    displayName,
+    age,
+    countryCode,
+    cityName,
+    intent,
+    interests,
+    bio,
+    profilePhoto,
+    verificationStatus: 'unverified'
+  });
 
   // Pre-calculate candidate state in memory during onboarding without downloading media
   useEffect(() => {
@@ -149,7 +163,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
     <div className="min-h-screen bg-stone-50 flex flex-col justify-between p-4 sm:p-6 max-w-lg mx-auto">
       {/* Header / Progress */}
       <div>
-        <div className="flex items-center justify-between pt-2 pb-4">
+        <div className="flex items-center justify-between pt-2 pb-3">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -163,7 +177,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
             </button>
             <div>
               <h1 className="font-semibold text-stone-900 text-base leading-tight">ÉNós</h1>
-              <p className="text-xs text-stone-700">CPLP Relacionamentos</p>
+              <p className="text-xs text-stone-600">Subinscrição Assistida CPLP</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -178,20 +192,26 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
             >
               Já tenho conta
             </button>
-            <span className="text-xs font-medium px-2.5 py-1 bg-stone-200 text-stone-700 rounded-full">
-              Etapa {step} de 4
-            </span>
+            <div className="flex items-center gap-1 bg-stone-100 border border-stone-200 text-stone-800 text-xs font-bold px-2.5 py-1 rounded-full shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+              <span>{completeness.score}%</span>
+            </div>
           </div>
-
         </div>
 
-        {/* Step indicator bar */}
-        <div className="w-full bg-stone-200 h-1.5 rounded-full overflow-hidden mb-6">
-          <motion.div
-            className="h-full bg-rose-600"
-            animate={{ width: `${(step / 4) * 100}%` }}
-            transition={{ duration: 0.3 }}
-          />
+        {/* Step indicator bar & completeness badge */}
+        <div className="space-y-1.5 mb-6">
+          <div className="flex items-center justify-between text-[11px] text-stone-600 font-medium">
+            <span>Passo {step} de 4</span>
+            <span className="text-rose-600 font-semibold">{completeness.levelLabel}</span>
+          </div>
+          <div className="w-full bg-stone-200 h-2 rounded-full overflow-hidden">
+            <motion.div
+              className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
+              animate={{ width: `${Math.max(20, completeness.score)}%` }}
+              transition={{ duration: 0.4 }}
+            />
+          </div>
         </div>
       </div>
 
@@ -207,29 +227,32 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
               className="space-y-6"
             >
               <div>
-                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">Como podemos chamar você?</h2>
-                <p className="text-sm text-stone-700 mt-1">Seu primeiro nome é suficiente para começar.</p>
+                <span className="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">
+                  Presença & Identidade
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900 tracking-tight mt-2">Como gostaria de ser acolhido(a)?</h2>
+                <p className="text-sm text-stone-600 mt-1">Um nome suave ou como os seus amigos mais próximos o tratam.</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5">
-                    Seu Nome
+                  <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                    O teu nome de apresentação
                   </label>
                   <input
                     id="input-display-name"
                     type="text"
                     value={displayName}
                     onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder="Ex: Marta, Tiago, Camila..."
+                    placeholder="Ex: Marta, Tiago, Amara, Manuel..."
                     className="w-full px-4 py-3 bg-white border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 text-lg shadow-xs"
                     autoFocus
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5">
-                    Sua Idade: <span className="text-rose-600 font-bold">{age} anos</span>
+                  <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                    A tua idade: <span className="text-rose-600 font-bold">{age} anos</span>
                   </label>
                   <input
                     id="input-age-range"
@@ -240,9 +263,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                     onChange={(e) => setAge(Number(e.target.value))}
                     className="w-full accent-rose-600 cursor-pointer"
                   />
-                  <div className="flex justify-between text-xs text-stone-700 mt-1">
+                  <div className="flex justify-between text-xs text-stone-500 mt-1 font-mono">
                     <span>18</span>
-                    <span>45</span>
+                    <span>35</span>
+                    <span>50</span>
                     <span>75+</span>
                   </div>
                 </div>
@@ -259,14 +283,17 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
               className="space-y-6"
             >
               <div>
-                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">Onde você está localizado?</h2>
-                <p className="text-sm text-stone-700 mt-1">Selecione seu país e cidade na comunidade lusófona.</p>
+                <span className="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">
+                  Espaço & Raízes
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900 tracking-tight mt-2">De onde te conectas ao mundo lusófono?</h2>
+                <p className="text-sm text-stone-600 mt-1">Conectamos corações em toda a comunidade de língua portuguesa.</p>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5">
-                    País CPLP
+                  <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
+                    O teu país de presença
                   </label>
                   <div className="grid grid-cols-3 gap-2">
                     {CPLP_COUNTRY_LIST.map((c) => (
@@ -275,9 +302,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                         type="button"
                         id={`country-select-${c.code}`}
                         onClick={() => handleCountryChange(c.code)}
-                        className={`p-3 rounded-xl border text-left transition flex flex-col items-center justify-center gap-1 ${
+                        className={`p-3 rounded-xl border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
                           countryCode === c.code
-                            ? 'border-rose-600 bg-rose-50 text-rose-900 ring-1 ring-rose-600'
+                            ? 'border-rose-600 bg-rose-50 text-rose-900 ring-1 ring-rose-600 shadow-xs'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300'
                         }`}
                       >
@@ -289,7 +316,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-1.5">
                     Cidade
                   </label>
                   <div className="relative">
@@ -300,7 +327,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                       list="cplp-cities-list"
                       value={cityName}
                       onChange={(e) => setCityName(e.target.value)}
-                      placeholder="Nome da sua cidade..."
+                      placeholder="Ex: Luanda, Lisboa, Maputo, São Paulo..."
                       className="w-full pl-9 pr-4 py-3 bg-white border border-stone-300 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-rose-500 text-sm shadow-xs"
                     />
                     <datalist id="cplp-cities-list">
@@ -323,8 +350,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
               className="space-y-5"
             >
               <div>
-                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">Qual é a sua intenção principal?</h2>
-                <p className="text-sm text-stone-700 mt-1">Conecte-se com quem procura o mesmo objetivo.</p>
+                <span className="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">
+                  Sintonia & Propósito
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900 tracking-tight mt-2">O que procura o teu coração hoje?</h2>
+                <p className="text-sm text-stone-600 mt-1">Transparência desde o primeiro instante para encontros com verdade.</p>
               </div>
 
               <div className="space-y-2.5">
@@ -334,7 +364,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                     type="button"
                     id={`intent-select-${item.id}`}
                     onClick={() => setIntent(item.id)}
-                    className={`w-full p-4 rounded-xl border text-left transition flex items-center gap-3.5 ${
+                    className={`w-full p-4 rounded-xl border text-left transition flex items-center gap-3.5 cursor-pointer active:scale-98 ${
                       intent === item.id
                         ? 'border-rose-600 bg-rose-50/70 text-stone-900 ring-1 ring-rose-600 shadow-xs'
                         : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300'
@@ -343,7 +373,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                     <div className="p-2.5 rounded-lg bg-stone-100/80">{intentIcons[item.id]}</div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-stone-900 text-sm">{item.label}</div>
-                      <div className="text-xs text-stone-700 mt-0.5">{item.description}</div>
+                      <div className="text-xs text-stone-600 mt-0.5">{item.description}</div>
                     </div>
                     {intent === item.id && <Check className="w-5 h-5 text-rose-600 shrink-0" />}
                   </button>
@@ -361,15 +391,18 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
               className="space-y-5"
             >
               <div>
-                <h2 className="text-2xl font-bold text-stone-900 tracking-tight">Interesses e Foto</h2>
-                <p className="text-sm text-stone-700 mt-1">
-                  Escolha pelo menos 3 interesses e adicione sua foto para destaque.
+                <span className="text-xs font-bold uppercase tracking-wider text-rose-600 bg-rose-50 px-2.5 py-1 rounded-full">
+                  Alma & Expressão
+                </span>
+                <h2 className="text-2xl font-bold text-stone-900 tracking-tight mt-2">O teu toque pessoal no mundo</h2>
+                <p className="text-sm text-stone-600 mt-1">
+                  Uma fotografia luminosa e 3 interesses abrem portas para conversas memoráveis.
                 </p>
               </div>
 
               {/* Photo selector */}
               <div className="flex items-center gap-4 bg-white p-3.5 rounded-xl border border-stone-200">
-                <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-rose-500 shrink-0 bg-stone-100">
+                <div className="relative w-16 h-16 rounded-full overflow-hidden border-2 border-rose-500 shrink-0 bg-stone-100 shadow-xs">
                   <img
                     src={profilePhoto}
                     alt="Prévia de perfil"
@@ -395,20 +428,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                     htmlFor="photo-upload-input"
                     className="text-xs font-semibold text-rose-600 hover:text-rose-700 cursor-pointer block"
                   >
-                    Trocar Foto de Perfil
+                    Escolher Foto de Rosto
                   </label>
-                  <p className="text-[11px] text-stone-700 mt-0.5">
-                    Compressão ultraleve automática (WebP otimizado).
+                  <p className="text-[11px] text-stone-600 mt-0.5">
+                    Fotos com sorriso natural geram 4x mais afinidade e confiança.
                   </p>
                 </div>
               </div>
 
               {/* Interests chips */}
               <div>
-                <label className="block text-xs font-medium text-stone-700 uppercase tracking-wider mb-2">
-                  Selecione seus Interesses ({interests.length}/6 selecionados)
+                <label className="block text-xs font-semibold text-stone-700 uppercase tracking-wider mb-2">
+                  O que move as tuas conversas? ({interests.length}/6 selecionados)
                 </label>
-                <div className="flex flex-wrap gap-1.5 max-h-44 overflow-y-auto pr-1">
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
                   {NORMALIZED_INTERESTS.map((int) => {
                     const isSelected = interests.includes(int);
                     return (
@@ -416,9 +449,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                         key={int}
                         type="button"
                         onClick={() => toggleInterest(int)}
-                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition whitespace-nowrap ${
+                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition whitespace-nowrap cursor-pointer active:scale-95 ${
                           isSelected
-                            ? 'border-rose-600 bg-rose-600 text-white'
+                            ? 'border-rose-600 bg-rose-600 text-white shadow-2xs'
                             : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300'
                         }`}
                       >
@@ -432,8 +465,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
               {/* Bio & AI Assist */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-medium text-stone-700 uppercase tracking-wider">
-                    Bio Curta (Opcional)
+                  <label className="text-xs font-semibold text-stone-700 uppercase tracking-wider">
+                    Bio Breve
                   </label>
                   <button
                     type="button"
@@ -442,7 +475,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                     className="text-xs text-rose-600 font-semibold hover:text-rose-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
                   >
                     <Sparkles className="w-3.5 h-3.5" />
-                    {isGeneratingBio ? 'Gerando...' : 'Sugerir com IA'}
+                    {isGeneratingBio ? 'Gerando...' : 'Inspiração suave com IA'}
                   </button>
                 </div>
                 <textarea
@@ -450,9 +483,22 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
                   rows={2}
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
-                  placeholder="Escreva algumas palavras sobre você ou use a sugestão..."
+                  placeholder="Partilha uma frase que te defina ou um momento de carinho..."
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-xl text-stone-900 placeholder-stone-400 text-xs focus:outline-none focus:ring-2 focus:ring-rose-500 shadow-xs"
                 />
+              </div>
+
+              {/* Preview da pontuação ao concluir */}
+              <div className="p-3 bg-rose-50/60 border border-rose-100 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span className="text-xs text-stone-700">
+                    Aperfeiçoamento inicial estimado:
+                  </span>
+                </div>
+                <span className="text-xs font-bold text-rose-700 bg-white px-2 py-0.5 rounded-full border border-rose-200 shadow-2xs">
+                  {completeness.score}% ({completeness.levelLabel})
+                </span>
               </div>
             </motion.div>
           )}

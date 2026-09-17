@@ -21,6 +21,7 @@ import { dataSaver, SimulatedNetworkMode, BandwidthTelemetry } from '../services
 import { authService } from '../services/authService';
 import { AccountSecurityModal } from './auth/AccountSecurityModal';
 import { IdentityVerificationModal } from './profile/IdentityVerificationModal';
+import { ProfileCompletenessBadge, ProfileImprovementModal } from './profile/ProfileCompletenessBadge';
 import { OptimizedImage } from './common/OptimizedImage';
 import { ImmutableTrustEvidenceRecord } from '../types';
 import {
@@ -106,6 +107,7 @@ export const Profile: React.FC<ProfileProps> = ({
   // Sub-modais e fluxos especializados
   const [isAccountSecurityModalOpen, setIsAccountSecurityModalOpen] = useState(false);
   const [isVerificationModalOpen, setIsVerificationModalOpen] = useState(false);
+  const [isCompletenessModalOpen, setIsCompletenessModalOpen] = useState(false);
   const [immutableEvidences, setImmutableEvidences] = useState<ImmutableTrustEvidenceRecord[]>([]);
   const [authUser, setAuthUser] = useState<AuthUser | null>(() => authService.getCurrentUser());
 
@@ -237,19 +239,33 @@ export const Profile: React.FC<ProfileProps> = ({
         </div>
 
         {/* Botão de Verificação Rápida */}
-        <button
-          type="button"
-          onClick={() => setIsVerificationModalOpen(true)}
-          className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer shrink-0 ${
-            profile.verificationStatus === 'verified'
-              ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
-              : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-600'
-          }`}
-        >
-          <ShieldCheck className={`w-3.5 h-3.5 ${profile.verificationStatus === 'verified' ? 'text-emerald-400' : 'text-amber-400'}`} />
-          <span>{profile.verificationStatus === 'verified' ? 'Verificado' : 'Verificar'}</span>
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <ProfileCompletenessBadge
+            profile={profile}
+            compact={true}
+            onOpenImprovementModal={() => setIsCompletenessModalOpen(true)}
+          />
+          <button
+            type="button"
+            onClick={() => setIsVerificationModalOpen(true)}
+            className={`py-1.5 px-3 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer shrink-0 ${
+              profile.verificationStatus === 'verified'
+                ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
+                : 'bg-stone-800 border-stone-700 text-stone-300 hover:border-stone-600'
+            }`}
+          >
+            <ShieldCheck className={`w-3.5 h-3.5 ${profile.verificationStatus === 'verified' ? 'text-emerald-400' : 'text-amber-400'}`} />
+            <span>{profile.verificationStatus === 'verified' ? 'Verificado' : 'Verificar'}</span>
+          </button>
+        </div>
       </div>
+
+      {/* Cartão de Aperfeiçoamento Interativo (Apenas se o perfil estiver abaixo de 100%) */}
+      <ProfileCompletenessBadge
+        profile={profile}
+        compact={false}
+        onOpenImprovementModal={() => setIsCompletenessModalOpen(true)}
+      />
 
       {/* ─────────────────────────────────────────────────────────────
           CAMADA 1 — IDENTIDADE (100% RECOLHÍVEL)
@@ -932,6 +948,21 @@ export const Profile: React.FC<ProfileProps> = ({
         onClose={() => setIsVerificationModalOpen(false)}
         profile={profile}
         onVerificationSuccess={handleVerificationSuccess}
+      />
+
+      <ProfileImprovementModal
+        isOpen={isCompletenessModalOpen}
+        onClose={() => setIsCompletenessModalOpen(false)}
+        profile={profile}
+        onNavigateToSection={(sectionId) => {
+          if (sectionId === 'trust') {
+            setIsVerificationModalOpen(true);
+          } else if (sectionId === 'identity' || sectionId === 'culture') {
+            setOpenSections(prev => ({ ...prev, identity: true }));
+          } else if (sectionId === 'essential') {
+            setOpenSections(prev => ({ ...prev, identity: true, preferences: true }));
+          }
+        }}
       />
     </div>
   );
