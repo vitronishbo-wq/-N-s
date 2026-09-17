@@ -25,10 +25,11 @@ import { Connections } from './components/Connections';
 import { Conversations } from './components/Conversations';
 import { Profile } from './components/Profile';
 import { ProfileCompletenessBadge } from './components/profile/ProfileCompletenessBadge';
+import { CPLPDualAccountTestModal } from './components/common/CPLPDualAccountTestModal';
 import { AdminKeypadModal } from './components/AdminKeypadModal';
 import { AdminPanel } from './components/AdminPanel';
 import { GmailModal } from './components/GmailModal';
-import { Compass, MapPin, HeartHandshake, MessageCircle, User as UserIcon, Shield, Mail } from 'lucide-react';
+import { Compass, MapPin, HeartHandshake, MessageCircle, User as UserIcon, Shield, Mail, ArrowRightLeft } from 'lucide-react';
 
 // Helper to get or create a stable persistent device UID
 function getOrCreateDeviceId(): string {
@@ -81,6 +82,8 @@ export default function App() {
   // Admin & Keypad State
   const [isKeypadOpen, setIsKeypadOpen] = useState(false);
   const [isGmailOpen, setIsGmailOpen] = useState(false);
+  const [isCplpTestModalOpen, setIsCplpTestModalOpen] = useState(false);
+  const [activeConvoId, setActiveConvoId] = useState<string | null>(null);
   const [gmailComposeProps, setGmailComposeProps] = useState<{
     recipient?: string;
     subject?: string;
@@ -496,6 +499,28 @@ export default function App() {
     }
   };
 
+  // Alternar Conta de Teste Prático CPLP (Portugal 🇵🇹 ↔ Angola 🇦🇴)
+  const handleSwitchAccount = async (newProfile: UserProfile, newPrefs: UserPreferences, newPrivacy: PrivacySettings) => {
+    setProfile(newProfile);
+    setPreferences(newPrefs);
+    setPrivacy(newPrivacy);
+    setUid(newProfile.uid);
+    try {
+      localStorage.setItem('enos_profile', JSON.stringify(newProfile));
+      localStorage.setItem('enos_preferences', JSON.stringify(newPrefs));
+      localStorage.setItem('enos_privacy', JSON.stringify(newPrivacy));
+      localStorage.setItem('enos_cplp_uid', newProfile.uid);
+    } catch {}
+
+    try {
+      await setDoc(doc(db, 'profiles', newProfile.uid), newProfile, { merge: true });
+      await setDoc(doc(db, 'preferences', newProfile.uid), newPrefs, { merge: true });
+      await setDoc(doc(db, 'privacy', newProfile.uid), newPrivacy, { merge: true });
+    } catch (e) {
+      console.info('Firestore test account sync:', e);
+    }
+  };
+
   // 2.4: Anonymous account linking / recovery without losing identities
   const handleLinkAccount = async (email: string) => {
     setIsAnonymous(false);
@@ -616,6 +641,18 @@ export default function App() {
           uid={uid}
           onComplete={handleCompleteOnboarding}
           onOpenKeypad={() => setIsKeypadOpen(true)}
+          onOpenCplpTest={() => setIsCplpTestModalOpen(true)}
+        />
+        <CPLPDualAccountTestModal
+          isOpen={isCplpTestModalOpen}
+          onClose={() => setIsCplpTestModalOpen(false)}
+          currentProfile={profile}
+          onSwitchAccount={handleSwitchAccount}
+          onOpenConversation={(convoId) => {
+            setActiveConvoId(convoId);
+            handleTabChange('chat');
+          }}
+          onNavigateToTab={(tab) => handleTabChange(tab)}
         />
         <AdminKeypadModal
           isOpen={isKeypadOpen}
@@ -664,6 +701,18 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              id="btn-open-cplp-test-header"
+              onClick={() => setIsCplpTestModalOpen(true)}
+              className="px-2 py-1 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 hover:bg-amber-500/25 text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
+              title="Teste Prático das 2 Contas: Angola 🇦🇴 ↔ Portugal 🇵🇹"
+            >
+              <span className="text-xs">🇦🇴</span>
+              <ArrowRightLeft className="w-3 h-3 text-amber-400" />
+              <span className="text-xs">🇵🇹</span>
+              <span className="hidden sm:inline">Teste Contas</span>
+            </button>
             {profile && (
               <ProfileCompletenessBadge
                 profile={profile}
@@ -782,6 +831,7 @@ export default function App() {
                   myProfile={profile}
                   conversations={conversations}
                   messages={messages}
+                  initialConversationId={activeConvoId}
                   onSendMessage={handleSendMessage}
                   onBlockUser={handleBlockUser}
                 />
@@ -803,6 +853,7 @@ export default function App() {
                     setGmailComposeProps({});
                     setIsGmailOpen(true);
                   }}
+                  onOpenCplpTest={() => setIsCplpTestModalOpen(true)}
                 />
               )}
             </motion.div>
@@ -857,6 +908,19 @@ export default function App() {
           initialRecipient={gmailComposeProps.recipient}
           initialSubject={gmailComposeProps.subject}
           initialBody={gmailComposeProps.body}
+        />
+
+        {/* CPLP Dual Account Test Modal (Portugal 🇵🇹 ↔ Angola 🇦🇴) */}
+        <CPLPDualAccountTestModal
+          isOpen={isCplpTestModalOpen}
+          onClose={() => setIsCplpTestModalOpen(false)}
+          currentProfile={profile}
+          onSwitchAccount={handleSwitchAccount}
+          onOpenConversation={(convoId) => {
+            setActiveConvoId(convoId);
+            handleTabChange('chat');
+          }}
+          onNavigateToTab={(tab) => handleTabChange(tab)}
         />
 
         {/* Secret Keypad Modal */}

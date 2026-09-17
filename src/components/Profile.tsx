@@ -75,6 +75,7 @@ interface ProfileProps {
   onLinkAccount: (email: string) => void;
   onOpenKeypad?: () => void;
   onOpenGmail?: () => void;
+  onOpenCplpTest?: () => void;
 }
 
 export const Profile: React.FC<ProfileProps> = ({
@@ -85,7 +86,10 @@ export const Profile: React.FC<ProfileProps> = ({
   onUpdateProfile,
   onUpdatePreferences,
   onUpdatePrivacy,
-  onLinkAccount
+  onLinkAccount,
+  onOpenKeypad,
+  onOpenGmail,
+  onOpenCplpTest
 }) => {
   // ─────────────────────────────────────────────────────────────
   // ESTADO DE CONTROLO DE RECOLHIMENTO (100% RECOLHÍVEL & ACORDEÃO SUAVE)
@@ -898,6 +902,17 @@ export const Profile: React.FC<ProfileProps> = ({
 
               {/* ⚙️ Conta & Sessões */}
               <div className="pt-2 border-t border-stone-800 space-y-2">
+                {onOpenCplpTest && (
+                  <button
+                    type="button"
+                    onClick={onOpenCplpTest}
+                    className="w-full py-2.5 bg-amber-950/40 hover:bg-amber-900/50 text-amber-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 cursor-pointer border border-amber-800/70 shadow-xs"
+                  >
+                    <span>🇦🇴 ↔ 🇵🇹</span>
+                    <span>Simulador de Teste Prático CPLP (Portugal & Angola)</span>
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => setIsAccountSecurityModalOpen(true)}

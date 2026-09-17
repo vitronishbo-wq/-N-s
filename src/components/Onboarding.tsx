@@ -13,9 +13,10 @@ interface OnboardingProps {
   uid: string;
   onComplete: (profile: UserProfile) => void;
   onOpenKeypad?: () => void;
+  onOpenCplpTest?: () => void;
 }
 
-export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenKeypad }) => {
+export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenKeypad, onOpenCplpTest }) => {
   const [step, setStep] = useState<number>(1);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginEmail, setLoginEmail] = useState('');
@@ -181,6 +182,18 @@ export const Onboarding: React.FC<OnboardingProps> = ({ uid, onComplete, onOpenK
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {onOpenCplpTest && (
+              <button
+                type="button"
+                id="btn-open-cplp-test-onboarding"
+                onClick={onOpenCplpTest}
+                className="text-xs font-bold text-amber-800 hover:text-amber-900 bg-amber-100/90 hover:bg-amber-200/90 px-2.5 py-1 rounded-full border border-amber-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                title="Teste Prático das 2 Contas: Angola 🇦🇴 ↔ Portugal 🇵🇹"
+              >
+                <span>🇦🇴 ↔ 🇵🇹</span>
+                <span className="hidden sm:inline">Teste Contas</span>
+              </button>
+            )}
             <button
               type="button"
               id="btn-open-login-onboarding"

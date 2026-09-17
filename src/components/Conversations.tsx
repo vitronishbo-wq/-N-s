@@ -27,6 +27,7 @@ interface ConversationsProps {
   messages: { [conversationId: string]: ChatMessage[] };
   onSendMessage: (conversationId: string, text: string, imageUrl?: string) => void;
   onBlockUser: (targetUid: string) => void;
+  initialConversationId?: string | null;
 }
 
 export const Conversations: React.FC<ConversationsProps> = ({
@@ -34,9 +35,16 @@ export const Conversations: React.FC<ConversationsProps> = ({
   conversations,
   messages,
   onSendMessage,
-  onBlockUser
+  onBlockUser,
+  initialConversationId
 }) => {
-  const [selectedConvoId, setSelectedConvoId] = useState<string | null>(null);
+  const [selectedConvoId, setSelectedConvoId] = useState<string | null>(initialConversationId || null);
+
+  useEffect(() => {
+    if (initialConversationId) {
+      setSelectedConvoId(initialConversationId);
+    }
+  }, [initialConversationId]);
   const [liveMessages, setLiveMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [sendingImage, setSendingImage] = useState(false);
